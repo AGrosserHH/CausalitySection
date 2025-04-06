@@ -12,6 +12,8 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 
 ## Project Setup
 
+nvm use 23.9.0
+
 ```sh
 npm install
 ```
@@ -27,3 +29,4 @@ npm run dev
 ```sh
 npm run build
 ```
+

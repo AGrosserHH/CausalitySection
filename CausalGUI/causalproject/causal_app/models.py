@@ -1,18 +1,20 @@
 from django.db import models
 
-class Variable(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-
-    def __str__(self):
-        return self.name
-
 class CausalGraph(models.Model):
     name = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)    
     image_path = models.CharField(max_length=255, blank=True, null=True)
+    data_file = models.FileField(upload_to='datasets/', null=True, blank=True)
 
     def __str__(self):
         return self.name
+
+class Variable(models.Model):
+    name = models.CharField(max_length=100)
+    graph = models.ForeignKey(CausalGraph, related_name='variables', on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('graph', 'name')
 
 class CausalEdge(models.Model):
     graph = models.ForeignKey(CausalGraph, related_name='edges', on_delete=models.CASCADE)

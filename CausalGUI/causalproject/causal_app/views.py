@@ -158,11 +158,6 @@ def causal_inference(request):
         return Response({"error": f"Dataset file not found: {dataset_path}"}, status=400)
     try:
         df = pd.read_csv(dataset_file)
-        # Ensure all columns are numeric
-        df = df.apply(pd.to_numeric, errors='coerce')
-
-        # Drop rows with missing values
-        df = df.dropna()
         print(df)
     except Exception as e:
         print("dataset_path2")

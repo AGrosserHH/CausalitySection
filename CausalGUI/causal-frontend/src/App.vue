@@ -20,7 +20,7 @@
   </div>
 
   <div>
-    <h2>Causal AI GUI (Right-Click Directed Graph)</h2>
+    <h2>Causal AI GUI</h2>
 
     <button @click="fetchVariables">Load Variables</button>
     <ul>
@@ -74,7 +74,7 @@
         </option>
       </select>
     </label>
-    <button @click="computeInference">Compute Inference</button>
+   <!-- <button @click="computeInference">Compute Inference</button> -->
   </div>
 
 </template>

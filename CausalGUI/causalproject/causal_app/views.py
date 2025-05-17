@@ -118,6 +118,7 @@ from rest_framework.response import Response
 from django.conf import settings
 import os
 import pandas as pd
+import numpy as np
 import networkx as nx
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for image generation
@@ -157,6 +158,11 @@ def causal_inference(request):
         return Response({"error": f"Dataset file not found: {dataset_path}"}, status=400)
     try:
         df = pd.read_csv(dataset_file)
+        # Ensure all columns are numeric
+        df = df.apply(pd.to_numeric, errors='coerce')
+
+        # Drop rows with missing values
+        df = df.dropna()
         print(df)
     except Exception as e:
         print("dataset_path2")
@@ -206,6 +212,7 @@ def causal_inference(request):
         return Response({"error": "The causal graph contains cycles (must be a DAG)."}, status=400)
     
     # 5. Create the CausalModel using DoWhy
+    print("5. Create the CausalModel using DoWhy")
     try:
         from dowhy import CausalModel
     except ImportError:
@@ -216,6 +223,7 @@ def causal_inference(request):
         return Response({"error": f"Failed to create causal model: {str(e)}"}, status=400)
     
     # 6. Identify the causal effect
+    print("6. Identify the causal effect")
     try:
         identified_estimand = model.identify_effect()
     except Exception as e:
@@ -224,6 +232,7 @@ def causal_inference(request):
         return Response({"error": "Causal effect not identifiable from the given graph."}, status=400)
     
     # 7. Choose an estimation method based on the identified estimand
+    print("7. Choose an estimation method based on the identified estimand")
     method_name = None
     try:
         # Prefer backdoor adjustment if available, otherwise IV, otherwise frontdoor
@@ -239,10 +248,16 @@ def causal_inference(request):
     if method_name is None:
         return Response({"error": "No valid estimation method for the identified effect."}, status=400)
     
+    print(f"Using method: {method_name}")
+    causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+
     # 8. Estimate the causal effect using the selected method
+    print("8. Estimate the causal effect using the selected method")
     try:
         causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+        print(causal_estimate)
     except Exception as e:
+        print(Exception)
         return Response({"error": f"Causal effect estimation failed: {str(e)}"}, status=400)
     # Extract the estimated effect value
     estimated_effect = None
@@ -253,6 +268,7 @@ def causal_inference(request):
         estimated_effect = getattr(causal_estimate, "estimate", str(causal_estimate))
     
     # 9. Generate and save a PNG image of the causal DAG
+    print("9. Generate and save a PNG image of the causal DAG")
     try:
         pos = nx.spring_layout(G)
         plt.figure(figsize=(6, 4))

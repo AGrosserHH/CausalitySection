@@ -167,6 +167,22 @@ def causal_inference(request):
         
         return Response({"error": "Treatment or outcome variable not found in dataset."}, status=400)
     
+    # conduct sanity check
+
+    # Ensure outcome variable is binary; convert if needed
+    outcome_vals = df[outcome_name].dropna().unique()
+
+    # If not strictly binary (0 and 1), convert
+    if sorted(outcome_vals) != [0, 1]:
+        print(f"[INFO] Converting '{outcome_name}' to binary")
+
+        # Most common value becomes 0, others become 1
+        most_common = df[outcome_name].mode()[0]
+        df[outcome_name] = df[outcome_name].apply(lambda x: 0 if x == most_common else 1)
+
+        # Optional: log unique values after conversion
+        print(f"[INFO] Outcome values after conversion: {df[outcome_name].unique()}")
+
     # 3. Retrieve causal graph edges from the database
     print("graph_id")
     try:
@@ -214,13 +230,16 @@ def causal_inference(request):
         return Response({"error": "DoWhy library is not installed on the server."}, status=500)
     try:
         model = CausalModel(data=df, treatment=treatment_name, outcome=outcome_name, graph=dot_graph)
+        print(model)
     except Exception as e:
         return Response({"error": f"Failed to create causal model: {str(e)}"}, status=400)
     
+   
     # 6. Identify the causal effect
     print("6. Identify the causal effect")
     try:
         identified_estimand = model.identify_effect()
+        print(identified_estimand)
     except Exception as e:
         return Response({"error": f"Causal effect identification failed: {str(e)}"}, status=400)
     if identified_estimand is None:
@@ -244,8 +263,7 @@ def causal_inference(request):
         return Response({"error": "No valid estimation method for the identified effect."}, status=400)
     
     print(f"Using method: {method_name}")
-    causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
-
+    
     # 8. Estimate the causal effect using the selected method
     print("8. Estimate the causal effect using the selected method")
     try:

@@ -1,91 +1,93 @@
 <!-- App.vue -->
 <template>
-  <div class="app-container">
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <h2>📊 Dataset</h2>
-      <input type="file" accept=".csv" @change="handleFileUpload" style="margin-bottom: 20px;" />
-
-      <h3>📌 Variables</h3>
-      <ul style="list-style: none; padding: 0;">
-        <li
-          v-for="v in variables"
-          :key="v.id"
-          draggable="true"
-          @dragstart="onDragStart(v.name, $event)"
-          style="padding: 6px; margin-bottom: 5px; background: #374151; border-radius: 4px; cursor: grab;"
-        >
-          {{ v.name }}
-        </li>
-      </ul>
-    </aside>
-
-    <!-- Main Panel -->
-    <main class="main-content">
-      <h1 style="margin-top: 0;">🧠 Causal AI Graph Builder</h1>
-
-      <!-- Graph & Controls -->
-      <div class="graph-and-controls">
-        <!-- Graph -->
-        <div
-          ref="cyContainer"
-          class="graph-canvas"
-          @dragover.prevent
-          @drop="onDrop"
-        ></div>
-
-        <!-- Controls -->
-        <div class="controls-panel">
-          <h3>🎛️ Controls</h3>
-
-          <label>
-            Treatment:
-            <select v-model="selectedTreatment" style="width: 100%;">
-              <option v-for="v in variables" :key="v.id" :value="v.id">{{ v.name }}</option>
-            </select>
-          </label>
-
-          <label>
-            Outcome:
-            <select v-model="selectedOutcome" style="width: 100%;">
-              <option v-for="v in variables" :key="v.id" :value="v.id">{{ v.name }}</option>
-            </select>
-          </label>
-
-          <label>
-            Method:
-            <select v-model="selectedMethod" style="width: 100%;">
-              <option disabled value="">--Select--</option>
-              <option value="backdoor.linear_regression">Backdoor: Linear Regression</option>
-              <option value="backdoor.propensity_score_matching">Propensity Matching</option>
-              <option value="iv.instrumental_variable">Instrumental Variable</option>
-              <option value="frontdoor.two_stage_regression">2-Stage Regression</option>
-            </select>
-          </label>
-
-          <button @click="saveGraph" style="padding: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px;">
-            💾 Save Graph
-          </button>
-          <button @click="computeInference" style="padding: 8px; background: #10b981; color: white; border: none; border-radius: 4px;">
-            🔍 Run Inference
-          </button>
-        </div>
-      </div>
-
-      <!-- Inference Result -->
-      <div v-if="inferenceResult !== null" class="inference-result">
-        <h3>📊 Inference Result</h3>
-        <p><strong>Estimated Effect:</strong> {{ inferenceResult }}</p>
-        <div v-if="causalGraphImageUrl">
-          <h4>📈 Causal Graph</h4>
-          <img :src="causalGraphImageUrl" alt="Causal Graph" style="max-width: 100%;" />
-        </div>
-      </div>
-    </main>
+<div class="sidebar">
+    <!-- CSV File Upload (drag-and-drop or file picker) -->
+    <div class="file-upload">
+      <input 
+        type="file" 
+        accept=".csv" 
+        @change="handleFileUpload" 
+        placeholder="Upload CSV Dataset" 
+      />
+    </div>
+    <!-- Sidebar variable list (populated after CSV upload) -->
+    <ul>
+      <li v-for="variable in variables" :key="variable.id">
+        {{ variable.name }}
+      </li>
+    </ul>
   </div>
-</template>
 
+  <div>
+    <h2>Causal AI GUI</h2>
+
+    <button @click="fetchVariables">Load Variables</button>
+    <ul>
+      <li
+        v-for="(variable, idx) in variables"
+        :key="variable.id"
+        draggable="true"
+        @dragstart="onDragStart(variable.name, $event)"
+        style="cursor: move; margin: 4px; padding: 4px; background: #eef;"
+      >
+        {{ variable.name }}
+      </li>
+    </ul>
+
+    <div
+      ref="cyContainer"
+      style="width: 600px; height: 400px; border: 1px solid #ccc;"
+      @dragover.prevent
+      @drop="onDrop"
+    ></div>
+
+    <button @click="saveGraph">💾 Save Graph</button>
+    <button @click="computeInference">🔍 Compute Inference</button>
+
+    <div v-if="inferenceResult !== null" style="margin-top: 20px;">
+      <h3>Inference Result</h3>
+      <p><strong>Estimated Effect:</strong> {{ inferenceResult }}</p>
+    </div>
+
+    <div v-if="causalGraphImageUrl" style="margin-top: 20px;">
+      <h3>Graph Visualization</h3>
+      <img :src="causalGraphImageUrl" alt="Causal Graph" style="max-width: 100%; border: 1px solid #ccc;" />
+    </div>
+  </div>
+
+  <!-- Controls below the graph: Treatment/Outcome selectors and Compute button -->
+  <div class="controls">
+    <label>
+      Treatment: 
+      <select v-model="selectedTreatment">
+        <option v-for="varObj in variables" :key="varObj.id" :value="varObj.id">
+          {{ varObj.name }}
+        </option>
+      </select>
+    </label>
+    <label>
+      Outcome: 
+      <select v-model="selectedOutcome">
+        <option v-for="varObj in variables" :key="varObj.id" :value="varObj.id">
+          {{ varObj.name }}
+        </option>
+      </select>
+    </label>
+    <label>
+      Inference Method:
+        <select v-model="selectedMethod">
+          <option disabled value="">-- Select method --</option>
+          <option value="backdoor.linear_regression">Backdoor: Linear Regression</option>
+          <option value="backdoor.propensity_score_matching">Backdoor: Propensity Score Matching</option>
+          <option value="iv.instrumental_variable">Instrumental Variable</option>
+          <option value="frontdoor.two_stage_regression">Frontdoor: Two-Stage Regression</option>
+        </select>
+      </label>
+   <!-- <button @click="computeInference">Compute Inference</button> -->
+  </div>
+
+</template>
 
 <script>
 import axios from "axios";
@@ -280,86 +282,7 @@ export default {
 </script>
 
 <style>
-html, body, #app {
-  height: 100%;
-  margin: 0;
-  padding: 0;
+body {
   font-family: sans-serif;
-}
-
-.app-container {
-  display: flex;
-  height: 100vh; /* full vertical height */
-  width: 100vw;  /* full horizontal width */
-  overflow: hidden;
-}
-
-.sidebar {
-  width: 240px;
-  background-color: #1f2937;
-  color: white;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow-y: auto;
-}
-
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow: auto;
-  background: #f9fafb;
-}
-
-.graph-and-controls {
-  display: flex;
-  flex-direction: row;
-  flex-grow: 1;
-  gap: 20px;
-  overflow: hidden;
-}
-
-.graph-canvas {
-  flex: 1 1 0%;
-  height: 100%;
-  border: 2px dashed #d1d5db;
-  border-radius: 6px;
-  background: white;
-}
-
-.controls-panel {
-  width: 280px;
-  min-width: 260px;
-  background-color: #f3f4f6;
-  border-radius: 6px;
-  padding: 12px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.inference-result {
-  margin-top: 16px;
-  background: #ecfdf5;
-  padding: 16px;
-  border-radius: 6px;
-}
-
-/* Mobile fallback */
-@media (max-width: 768px) {
-  .graph-and-controls {
-    flex-direction: column;
-  }
-
-  .controls-panel {
-    width: 100%;
-  }
-
-  .graph-canvas {
-    min-height: 400px;
-  }
 }
 </style>

@@ -15,6 +15,9 @@ from django.conf import settings
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
+import logging
+logger = logging.getLogger('causal')
+
 #from .models import Graph, Variable
 
 
@@ -56,7 +59,7 @@ def upload_csv(request):
     # Optional: return preview of first few rows for frontend display
     preview_data = df.head(3).to_dict(orient="records")
     print(preview_data )
-
+    
     return Response({
         "graph_id": graph.id,
         "graph_name": graph.name,
@@ -147,24 +150,30 @@ def causal_inference(request):
         # If a relative path is provided, assume it's under MEDIA_ROOT
         dataset_file = os.path.join(settings.MEDIA_ROOT, dataset_path)
 
+    
+
     treatment_var = Variable.objects.get(id=treatment, graph=graph)
     outcome_var = Variable.objects.get(id=outcome, graph=graph)    
     
     treatment_name = treatment_var.name
-    outcome_name = outcome_var.name
+    outcome_name = outcome_var.name 
     
     if not os.path.exists(dataset_file):
         print("dataset_path")
+        logger.error(f"[Dataset] Failed to read dataset: {e}")
         return Response({"error": f"Dataset file not found: {dataset_path}"}, status=400)
+    else:
+        logger.info(f"[Request] causal_inference: graph_id={graph_id}, treatment={treatment}, outcome={outcome}")
+
     try:
         df = pd.read_csv(dataset_file)
+        logger.info(f"[Dataset] Loaded {dataset_path}, shape={df.shape}")
         print(df)
     except Exception as e:
         print("dataset_path2")
         return Response({"error": f"Failed to read dataset: {str(e)}"}, status=400)
     # Ensure treatment and outcome columns exist in data
-    if treatment_name not in df.columns or outcome_name not in df.columns:
-        
+    if treatment_name not in df.columns or outcome_name not in df.columns:        
         return Response({"error": "Treatment or outcome variable not found in dataset."}, status=400)
     
     # conduct sanity check
@@ -174,6 +183,7 @@ def causal_inference(request):
 
     # If not strictly binary (0 and 1), convert
     if sorted(outcome_vals) != [0, 1]:
+        logger.info(f"[Outcome] Converting '{outcome_name}' to binary. Original values: {outcome_vals}")
         print(f"[INFO] Converting '{outcome_name}' to binary")
 
         # Most common value becomes 0, others become 1
@@ -182,6 +192,7 @@ def causal_inference(request):
 
         # Optional: log unique values after conversion
         print(f"[INFO] Outcome values after conversion: {df[outcome_name].unique()}")
+        logger.info(f"[Outcome] Conversion complete. New unique values: {df[outcome_name].unique().tolist()}")
 
     # 3. Retrieve causal graph edges from the database
     print("graph_id")
@@ -204,24 +215,31 @@ def causal_inference(request):
         edge_list.append((src, tgt))
         dot_edges.append(f'"{src}" -> "{tgt}"') # quote names to handle special chars
     dot_graph = "digraph {" + ";".join(dot_edges) + ";}"
+    
     print("nodes_set =", nodes_set)
     print("treatment_name =", treatment_name)
     print("outcome_name =", outcome_name)
+
     # Validate that treatment and outcome are in the graph nodes
     if treatment_name not in nodes_set or outcome_name not in nodes_set:
         print("nodes_set")
         return Response({"error": "Treatment or outcome is not a node in the causal graph."}, status=400)
+    else: 
+        logger.debug(f"[Graph] DOT: {dot_graph}")
+        logger.debug(f"[Graph] Nodes: {list(nodes_set)}")
+
     # Validate that all graph nodes exist as columns in the dataset
     for node in nodes_set:
         if node not in df.columns:
             return Response({"error": f"Variable '{node}' from graph not found in dataset."}, status=400)
+    
     # Verify the graph is acyclic (DAG)
     G = nx.DiGraph()
     G.add_edges_from(edge_list)
-    if not nx.is_directed_acyclic_graph(G):
-        print("G")
+    if not nx.is_directed_acyclic_graph(G):        
+        logger.error(f"[Graph] Invalid DAG. Graph contains cycles.")
         return Response({"error": "The causal graph contains cycles (must be a DAG)."}, status=400)
-    
+        
     # 5. Create the CausalModel using DoWhy
     print("5. Create the CausalModel using DoWhy")
     try:
@@ -233,13 +251,14 @@ def causal_inference(request):
         print(model)
     except Exception as e:
         return Response({"error": f"Failed to create causal model: {str(e)}"}, status=400)
-    
-   
+       
     # 6. Identify the causal effect
     print("6. Identify the causal effect")
     try:
         identified_estimand = model.identify_effect()
         print(identified_estimand)
+        logger.info(f"[DoWhy] Identifying effect...")
+        logger.debug(f"[DoWhy] Estimand: {identified_estimand}")
     except Exception as e:
         return Response({"error": f"Causal effect identification failed: {str(e)}"}, status=400)
     if identified_estimand is None:
@@ -256,9 +275,23 @@ def causal_inference(request):
             method_name = "iv.instrumental_variable"
         elif identified_estimand.get_frontdoor_variables() is not None:
             method_name = "frontdoor.two_stage_regression"
+            
     except Exception:
         # If any issue determining method, default to backdoor linear regression
-        method_name = "backdoor.linear_regression"
+        method_name = request.data.get("method_name")
+
+    if not method_name:
+        # fallback auto-selection based on identified_estimand
+        try:
+            if identified_estimand.get_backdoor_variables() is not None:
+                method_name = "backdoor.linear_regression"
+            elif identified_estimand.get_instrumental_variables() is not None:
+                method_name = "iv.instrumental_variable"
+            elif identified_estimand.get_frontdoor_variables() is not None:
+                method_name = "frontdoor.two_stage_regression"
+        except Exception:
+            method_name = "backdoor.linear_regression"
+
     if method_name is None:
         return Response({"error": "No valid estimation method for the identified effect."}, status=400)
     
@@ -269,13 +302,20 @@ def causal_inference(request):
     try:
         causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
         print(causal_estimate)
+        
+        logger.info(f"[DoWhy] Estimating effect using: {method_name}")          
+        logger.debug(f"[DoWhy] Causal estimate: {causal_estimate}")
+        
     except Exception as e:
         print(Exception)
+        logger.exception(f"[DoWhy] Estimation failed: {e}")        
         return Response({"error": f"Causal effect estimation failed: {str(e)}"}, status=400)
+    
     # Extract the estimated effect value
     estimated_effect = None
     if hasattr(causal_estimate, "value"):
         estimated_effect = causal_estimate.value
+        logger.debug(f"[DoWhy] Estimated effect: {estimated_effect}")
     else:
         # Fallback: try other attribute or string
         estimated_effect = getattr(causal_estimate, "estimate", str(causal_estimate))
@@ -299,9 +339,13 @@ def causal_inference(request):
         # Prepare image URL or relative path for response
         if hasattr(settings, "MEDIA_URL"):
             graph_image_url = settings.MEDIA_URL.rstrip("/") + "/causal_graphs/" + image_filename
+            
         else:
             graph_image_url = "/media/causal_graphs/" + image_filename
+        logger.info(f"[Graph] DAG saved to: {image_path}")
+            
     except Exception as e:
+        logger.info(f"Failed to generate graph image: {str(e)}")
         return Response({"error": f"Failed to generate graph image: {str(e)}"}, status=500)
     
     # 10. Return the results as JSON

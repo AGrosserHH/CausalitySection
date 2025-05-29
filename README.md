@@ -4,8 +4,4 @@ CausalityAI is an emerging field at the intersection of artificial intelligence 
 
 I like to play in this field and I finally developed a small prototype GUI for playing for CausalAI.
 
-
-
-CausalGUI$ cd causal-frontend
-CausalGUI/causal-frontend$ nvm use 23.9.0
-CausalGUI/causal-frontend$ npm run dev
+![CausalityAI GUI Screenshot](CausalAIGUI.png)

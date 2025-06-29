@@ -8,6 +8,9 @@ from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Variable, CausalGraph, CausalEdge
+from .models import KnowledgeGraph, KnowledgeGraphTriple
+import rdflib
+
 from dowhy import CausalModel
 import os
 import pandas as pd
@@ -16,6 +19,7 @@ from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 import logging
+from rdflib import Graph as RDFGraph
 logger = logging.getLogger('causal')
 
 #from .models import Graph, Variable
@@ -65,6 +69,65 @@ def upload_csv(request):
         "graph_name": graph.name,
         "variables": variables,
         "preview": preview_data  # optional preview
+    })
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def upload_rdf(request):
+    """
+    Upload an RDF file, parse it using rdflib, store as KnowledgeGraph and KnowledgeGraphTriple entries,
+    and return nodes and edges for frontend visualization.
+    """
+    file_obj = request.FILES.get('file')
+    if not file_obj:
+        return Response({"error": "No file uploaded"}, status=400)
+
+    # ✅ Create KnowledgeGraph entry to store metadata
+    graph_instance = KnowledgeGraph.objects.create(name=file_obj.name)
+
+    # ✅ Parse RDF file with rdflib
+    g = rdflib.Graph()
+    try:
+        g.parse(file=file_obj, format=rdflib.util.guess_format(file_obj.name))
+    except Exception as e:
+        return Response({"error": f"Failed to parse RDF: {str(e)}"}, status=400)
+
+    triples = []
+    nodes_set = set()
+    edges = []
+
+    for s, p, o in g:
+        # ✅ Store each triple in database
+        triples.append(KnowledgeGraphTriple(
+            graph=graph_instance,
+            subject=str(s),
+            predicate=str(p),
+            object=str(o)
+        ))
+
+        # ✅ Prepare frontend visualization data
+        nodes_set.update([str(s), str(o)])
+        edges.append({
+            "data": {
+                "id": f"{str(s)}_{str(o)}",
+                "source": str(s),
+                "target": str(o),
+                "label": str(p)
+            }
+        })
+
+    # ✅ Bulk insert all triples
+    KnowledgeGraphTriple.objects.bulk_create(triples)
+
+    # ✅ Prepare node elements for Cytoscape.js
+    nodes = [{"data": {"id": n, "label": n.split("/")[-1] if "/" in n else n}} for n in nodes_set]
+
+    # ✅ Return success response
+    return Response({
+        "message": "Knowledge graph uploaded successfully.",
+        "graph_id": graph_instance.id,
+        "nodes": nodes,
+        "edges": edges
     })
 
 @api_view(['GET'])

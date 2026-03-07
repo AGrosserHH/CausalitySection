@@ -28,13 +28,95 @@ def normalize_binary_outcome(data_frame: pd.DataFrame, outcome_name: str) -> pd.
     return data_frame
 
 
+def preprocess_data_frame_for_causal(data_frame: pd.DataFrame) -> pd.DataFrame:
+    processed = data_frame.copy()
+
+    true_tokens = {"true", "t", "yes", "y", "1", "on"}
+    false_tokens = {"false", "f", "no", "n", "0", "off"}
+    boolean_tokens = true_tokens | false_tokens
+
+    for column in processed.columns:
+        series = processed[column]
+
+        if pd.api.types.is_bool_dtype(series):
+            processed[column] = series.astype("Int64").astype("float")
+            continue
+
+        if pd.api.types.is_numeric_dtype(series):
+            continue
+
+        normalized_text = series.astype("string").str.strip()
+        normalized_lower = normalized_text.str.lower()
+        non_empty = normalized_lower[normalized_lower.notna() & (normalized_lower != "")]
+
+        if not non_empty.empty and non_empty.isin(boolean_tokens).all():
+            bool_numeric = normalized_lower.map(
+                lambda value: 1.0 if value in true_tokens else 0.0 if value in false_tokens else pd.NA
+            )
+            processed[column] = bool_numeric.astype("float")
+            continue
+
+        numeric_series = pd.to_numeric(series, errors="coerce")
+        numeric_ratio = float(numeric_series.notna().mean())
+        if numeric_ratio >= 0.8:
+            processed[column] = numeric_series.astype("float")
+            continue
+
+        datetime_series = pd.to_datetime(series, errors="coerce", utc=True)
+        datetime_ratio = float(datetime_series.notna().mean())
+        if datetime_ratio >= 0.8:
+            epoch_seconds = (
+                (datetime_series - pd.Timestamp("1970-01-01", tz="UTC")) / pd.Timedelta(seconds=1)
+            )
+            processed[column] = epoch_seconds.astype("float")
+            continue
+
+        cleaned = normalized_text.replace({"": pd.NA, "nan": pd.NA, "none": pd.NA, "null": pd.NA})
+        categories = cleaned.astype("category")
+        category_codes = categories.cat.codes.replace(-1, pd.NA).astype("float")
+        processed[column] = category_codes
+
+    processed = processed.replace([float("inf"), float("-inf")], pd.NA)
+
+    for column in processed.columns:
+        series = processed[column]
+        if not pd.api.types.is_numeric_dtype(series):
+            continue
+
+        numeric_series = pd.to_numeric(series, errors="coerce")
+        if numeric_series.notna().any():
+            median_value = float(numeric_series.median())
+            processed[column] = numeric_series.fillna(median_value)
+        else:
+            processed[column] = numeric_series.fillna(0.0)
+
+    return processed
+
+
+def _escape_gml_label(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def build_dot_graph(edges: list[tuple[str, str]]) -> tuple[str, nx.DiGraph, set[str]]:
     graph = nx.DiGraph()
     graph.add_edges_from(edges)
-    nodes = set(graph.nodes())
-    dot_edges = [f'"{source}" -> "{target}"' for source, target in edges]
-    dot_graph = "digraph {" + ";".join(dot_edges) + ";}"
-    return dot_graph, graph, nodes
+    nodes = sorted(set(graph.nodes()))
+
+    node_index = {name: index for index, name in enumerate(nodes)}
+    gml_lines = ["graph[", "  directed 1"]
+
+    for name in nodes:
+        gml_lines.append(f'  node[ id {node_index[name]} label "{_escape_gml_label(name)}" ]')
+
+    for source, target in edges:
+        if source in node_index and target in node_index:
+            gml_lines.append(
+                f"  edge[ source {node_index[source]} target {node_index[target]} ]"
+            )
+
+    gml_lines.append("]")
+    gml_graph = "\n".join(gml_lines)
+    return gml_graph, graph, set(nodes)
 
 
 def select_estimation_method(identified_estimand: Any, requested_method: str | None) -> str | None:
@@ -61,6 +143,49 @@ def estimate_effect(
     dot_graph: str,
     requested_method: str | None,
 ) -> dict[str, Any]:
+    def to_numeric_or_category_codes(series: pd.Series) -> tuple[pd.Series, str]:
+        numeric_series = pd.to_numeric(series, errors="coerce")
+        if numeric_series.notna().any():
+            return numeric_series, "numeric"
+
+        normalized = series.astype("string").str.strip()
+        normalized = normalized.replace({"": pd.NA, "nan": pd.NA, "none": pd.NA, "null": pd.NA})
+        categorical = normalized.astype("category")
+        coded = categorical.cat.codes.replace(-1, pd.NA).astype("float")
+        return coded, "categorical"
+
+    def estimate_diff_in_means() -> float:
+        treatment_series, treatment_kind = to_numeric_or_category_codes(data_frame[treatment_name])
+        outcome_series, _outcome_kind = to_numeric_or_category_codes(data_frame[outcome_name])
+        valid_rows = treatment_series.notna() & outcome_series.notna()
+        treatment_series = treatment_series[valid_rows]
+        outcome_series = outcome_series[valid_rows]
+
+        if treatment_series.empty:
+            raise ValueError(
+                "Unable to estimate effect: treatment/outcome have no usable rows after preprocessing."
+            )
+
+        unique_treatments = list(pd.unique(treatment_series.dropna()))
+        if len(unique_treatments) < 2:
+            raise ValueError("Unable to estimate effect: treatment has no variation.")
+
+        if treatment_kind == "categorical":
+            most_common_groups = treatment_series.value_counts().index.tolist()
+            low_group = most_common_groups[0]
+            high_group = most_common_groups[1]
+        else:
+            low_group = min(unique_treatments)
+            high_group = max(unique_treatments)
+
+        high_mean = float(outcome_series[treatment_series == high_group].mean())
+        low_mean = float(outcome_series[treatment_series == low_group].mean())
+
+        if pd.isna(high_mean) or pd.isna(low_mean):
+            raise ValueError("Unable to estimate effect: insufficient outcome values in treatment groups.")
+
+        return high_mean - low_mean
+
     causal_model_class = get_causal_model_class()
     model = causal_model_class(
         data=data_frame,
@@ -77,7 +202,42 @@ def estimate_effect(
     if method_name is None:
         raise ValueError("No valid estimation method for the identified effect.")
 
-    causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+    try:
+        causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+    except Exception as exc:
+        error_text = str(exc).lower()
+        is_unknown_category_error = "found unknown categories" in error_text and "during transform" in error_text
+        if not is_unknown_category_error:
+            raise
+
+        if method_name != "backdoor.linear_regression":
+            try:
+                fallback_method = "backdoor.linear_regression"
+                causal_estimate = model.estimate_effect(identified_estimand, method_name=fallback_method)
+                method_name = fallback_method
+            except Exception as fallback_exc:
+                fallback_error_text = str(fallback_exc).lower()
+                fallback_unknown_category = (
+                    "found unknown categories" in fallback_error_text
+                    and "during transform" in fallback_error_text
+                )
+                if not fallback_unknown_category:
+                    raise
+
+                manual_effect = estimate_diff_in_means()
+                return {
+                    "estimated_effect": manual_effect,
+                    "method_name": "backdoor.diff_in_means_fallback",
+                    "estimand_string": str(identified_estimand),
+                }
+        else:
+            manual_effect = estimate_diff_in_means()
+            return {
+                "estimated_effect": manual_effect,
+                "method_name": "backdoor.diff_in_means_fallback",
+                "estimand_string": str(identified_estimand),
+            }
+
     estimated_effect = (
         causal_estimate.value
         if hasattr(causal_estimate, "value")

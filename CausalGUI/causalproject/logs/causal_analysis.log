@@ -1,0 +1,100 @@
+[2026-03-07 17:19:55,656] [ERROR] causal: Causal inference failed
+Traceback (most recent call last):
+  File "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject\causal_app\views.py", line 297, in causal_inference
+    inference_result = estimate_effect(
+        data_frame,
+    ...<3 lines>...
+        requested_method,
+    )
+  File "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject\causal_app\services.py", line 97, in estimate_effect
+    causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_model.py", line 359, in estimate_effect
+    return estimate_effect(
+        self._data,
+    ...<9 lines>...
+        method_params,
+    )
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimator.py", line 753, in estimate_effect
+    estimator.fit(
+    ~~~~~~~~~~~~~^
+        data=data,
+        ^^^^^^^^^^
+        effect_modifier_names=effect_modifiers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **method_params["fit_params"] if "fit_params" in method_params else {},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimators\propensity_score_matching_estimator.py", line 98, in fit
+    super().fit(data, effect_modifier_names=effect_modifier_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimators\propensity_score_estimator.py", line 113, in fit
+    raise Exception(error_msg)
+Exception: No common causes/confounders present. Propensity score based methods are not applicable
+[2026-03-07 17:38:15,419] [ERROR] causal: Causal inference failed
+Traceback (most recent call last):
+  File "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject\causal_app\views.py", line 300, in causal_inference
+    inference_result = estimate_effect(
+        data_frame,
+    ...<3 lines>...
+        requested_method,
+    )
+  File "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject\causal_app\services.py", line 192, in estimate_effect
+    causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_model.py", line 359, in estimate_effect
+    return estimate_effect(
+        self._data,
+    ...<9 lines>...
+        method_params,
+    )
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimator.py", line 753, in estimate_effect
+    estimator.fit(
+    ~~~~~~~~~~~~~^
+        data=data,
+        ^^^^^^^^^^
+        effect_modifier_names=effect_modifiers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **method_params["fit_params"] if "fit_params" in method_params else {},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimators\linear_regression_estimator.py", line 86, in fit
+    return super().fit(data, effect_modifier_names=effect_modifier_names)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimators\regression_estimator.py", line 102, in fit
+    _, self.model = self._build_model(data)
+                    ~~~~~~~~~~~~~~~~~^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\dowhy\causal_estimators\linear_regression_estimator.py", line 105, in _build_model
+    model = sm.OLS(data[self._target_estimand.outcome_variable[0]], features).fit()
+            ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\regression\linear_model.py", line 921, in __init__
+    super().__init__(endog, exog, missing=missing,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              hasconst=hasconst, **kwargs)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\regression\linear_model.py", line 746, in __init__
+    super().__init__(endog, exog, missing=missing,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              weights=weights, hasconst=hasconst, **kwargs)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\regression\linear_model.py", line 200, in __init__
+    super().__init__(endog, exog, **kwargs)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\model.py", line 270, in __init__
+    super().__init__(endog, exog, **kwargs)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\model.py", line 95, in __init__
+    self.data = self._handle_data(endog, exog, missing, hasconst,
+                ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  **kwargs)
+                                  ^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\model.py", line 135, in _handle_data
+    data = handle_data(endog, exog, missing, hasconst, **kwargs)
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\data.py", line 694, in handle_data
+    return klass(endog, exog=exog, missing=missing, hasconst=hasconst, **kwargs)
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\data.py", line 90, in __init__
+    self._handle_constant(hasconst)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "c:\Users\agros\Programming\Python\CausalitySection\.venv\Lib\site-packages\statsmodels\base\data.py", line 139, in _handle_constant
+    raise MissingDataError("exog contains inf or nans")
+statsmodels.tools.sm_exceptions.MissingDataError: exog contains inf or nans

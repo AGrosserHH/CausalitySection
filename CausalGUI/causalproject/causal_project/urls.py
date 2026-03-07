@@ -17,6 +17,8 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse, HttpResponse
+from django.urls import re_path
 
 from django.conf import settings
 from django.conf.urls.static import static
@@ -24,6 +26,8 @@ from django.conf.urls.static import static
 
 
 urlpatterns = [
+    path('', lambda request: JsonResponse({"status": "ok", "message": "Causal API server running", "api_base": "/api/"}), name='root_status'),
+    re_path(r'^\.well-known/.*$', lambda request: HttpResponse(status=204), name='well_known_probe'),
     path('admin/', admin.site.urls),
     path('api/', include('causal_app.urls')),  # /api/...
 ]

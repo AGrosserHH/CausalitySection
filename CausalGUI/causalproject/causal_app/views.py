@@ -41,6 +41,7 @@ from .services import (
     get_causal_model_class,
     generate_graph_image,
     normalize_binary_outcome,
+    preprocess_data_frame_for_causal,
     run_estimator_comparison,
     run_refutations_and_sensitivity,
     select_estimation_method,
@@ -201,8 +202,18 @@ def save_graph(request):
     return Response(response_serializer.data)
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 def causal_inference(request):
+    if request.method == "GET":
+        return Response(
+            {
+                "detail": "Use POST to run inference.",
+                "required_fields": ["graph_id", "treatment", "outcome"],
+                "optional_fields": ["method_name"],
+            },
+            status=200,
+        )
+
     serializer = CausalInferenceRequestSerializer(data=request.data)
     if not serializer.is_valid():
         return Response({"error": _first_error(serializer.errors)}, status=400)
@@ -241,6 +252,8 @@ def causal_inference(request):
         data_frame = pd.read_csv(dataset_path)
     except Exception as exc:
         return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
+
+    data_frame = preprocess_data_frame_for_causal(data_frame)
 
     treatment_name = treatment_var.name
     outcome_name = outcome_var.name
@@ -472,6 +485,8 @@ def assess_query(request):
     except Exception as exc:
         return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
 
+    data_frame = preprocess_data_frame_for_causal(data_frame)
+
     edges = CausalEdge.objects.filter(graph_id=graph_id)
     if not edges.exists():
         return Response({"error": "No causal graph found for the given graph_id."}, status=404)
@@ -563,6 +578,8 @@ def _load_graph_dataset_and_nodes(graph_id: int):
         data_frame = pd.read_csv(graph.data_file.path)
     except Exception as exc:
         return None, None, None, Response({"error": f"Failed to read dataset: {exc}"}, status=400)
+
+    data_frame = preprocess_data_frame_for_causal(data_frame)
 
     edges = CausalEdge.objects.filter(graph_id=graph_id)
     if not edges.exists():

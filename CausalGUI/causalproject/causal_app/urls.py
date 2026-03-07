@@ -9,3 +9,4 @@ urlpatterns = [
     path('upload_csv/', upload_csv, name='upload_csv'),
     path('openai/suggest_edges/', openai_suggest_edges, name='openai_suggest_edges'),
 ]
+

@@ -1,5 +1,84 @@
 <template>
   <div class="app-container">
+
+    <!-- ✅ Intro Screen -->
+    <div v-if="mode === 'home'" class="intro-screen">
+      <h1>🧠 Welcome to Causality AI Platform</h1>
+      <p>Please choose your data input type:</p>
+      <div class="choices">
+        <button @click="enterCsvMode">📄 Causality data: Upload CSV Dataset</button>
+        <button @click="enterRdfMode">🌐 Causality LLM: Upload Knowledge Graph (RDF)</button>
+      </div>
+    </div>
+
+    <!-- ✅ CSV Mode: Causal AI Graph Builder -->
+<div v-if="mode === 'csv'" class="app-container">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h2>📊 Dataset</h2>
+    <input type="file" accept=".csv" @change="handleFileUpload" style="margin-bottom: 20px;" />
+
+    <h3>📌 Variables</h3>
+    <ul class="variable-list">
+      <li
+        v-for="v in variables"
+        :key="v.id"
+        draggable="true"
+        @dragstart="onDragStart(v.name, $event)"
+        class="variable-item"
+      >
+        {{ v.name }}
+      </li>
+    </ul>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main-content">
+    <h1 style="margin-top: 0;">🧠 Causal AI Graph Builder</h1>
+
+    <div class="graph-and-controls">
+      <!-- Graph -->
+      <div
+        ref="cyContainer"
+        class="graph-canvas"
+        @dragover.prevent
+        @drop="onDrop"
+      ></div>
+
+      <!-- Controls -->
+      <div class="controls-panel">
+        <h3>🎛️ Controls</h3>
+
+        <label>
+          Treatment:
+          <select v-model="selectedTreatment">
+            <option v-for="v in variables" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+        </label>
+
+        <label>
+          Outcome:
+          <select v-model="selectedOutcome">
+            <option v-for="v in variables" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+        </label>
+
+        <label>
+          Method:
+          <select v-model="selectedMethod">
+            <option disabled value="">--Select--</option>
+            <option value="backdoor.linear_regression">Backdoor: Linear Regression</option>
+            <option value="backdoor.propensity_score_matching">Propensity Matching</option>
+            <option value="iv.instrumental_variable">Instrumental Variable</option>
+            <option value="frontdoor.two_stage_regression">2-Stage Regression</option>
+          </select>
+        </label>
+
+        <button @click="saveGraph" class="btn-primary">💾 Save Graph</button>
+        <button @click="computeInference" class="btn-success">🔍 Run Inference</button>
+      </div>
+    </div>
     <DatasetSidebar :variables="variables" @file-upload="handleFileUpload" @drag-start="onDragStart" />
 
     <main class="main-content">
@@ -11,6 +90,30 @@
       <div v-if="statusMessage" :class="['status-banner', statusType]">
         {{ statusMessage }}
       </div>
+
+    <!-- Inference Result -->
+    <div v-if="inferenceResult !== null" class="inference-result">
+      <h3>📊 Inference Result</h3>
+      <p><strong>Estimated Effect:</strong> {{ inferenceResult }}</p>
+      <div v-if="causalGraphImageUrl">
+        <h4>📈 Causal Graph</h4>
+        <img :src="causalGraphImageUrl" alt="Causal Graph" style="max-width: 100%;" />
+      </div>
+    </div>
+
+  </main>
+</div>
+
+    <!-- ✅ RDF Mode -->
+    <div v-if="mode === 'rdf'" class="rdf-container">
+      <h2>🌐 Upload Knowledge Graph (RDF)</h2>
+      <input type="file" accept=".ttl,.rdf,.xml" @change="handleRdfUpload" />
+
+      <div v-if="rdfGraphElements.length > 0" class="rdf-graph-container">
+        <h3>🔎 Visualized Knowledge Graph</h3>
+        <div ref="cyRdf" class="rdf-graph-canvas"></div>
+      </div>
+    </div>
 
       <section class="workspace-layout">
         <div class="graph-panel">
@@ -43,6 +146,56 @@
     </main>
   </div>
 </template>
+
+<script>
+import axios from "axios";
+import cytoscape from "cytoscape";
+
+export default {
+  name: "App",
+  data() {
+    return {
+      mode: "home",
+      variables: [],
+      cy: null,
+      startNode: null,
+      endNode: null,
+      graphId: null,
+      inferenceResult: null,
+      causalGraphImageUrl: null,
+      selectedTreatment: null,
+      selectedOutcome: null,
+      selectedMethod: "",
+      rdfGraphElements: [],
+    };
+  },
+  methods: {
+    enterCsvMode() {
+      this.mode = "csv";
+      this.$nextTick(() => {
+        this.initCytoscapeCsv();
+      });
+    },
+    enterRdfMode() {
+      this.mode = "rdf";
+    },
+    initCytoscapeCsv() {
+      if (this.cy) this.cy.destroy();
+      this.cy = cytoscape({
+        container: this.$refs.cyContainer,
+        elements: [],
+        style: [
+          { selector: "node", style: { label: "data(label)", "background-color": "#66B" } },
+          { selector: "edge", style: {
+              width: 2,
+              "line-color": "#888",
+              "target-arrow-color": "#888",
+              "target-arrow-shape": "triangle",
+              "curve-style": "bezier",
+            } }
+        ],
+        layout: { name: "grid" },
+      });
 
 <script setup>
 import { onMounted, ref } from "vue"
@@ -378,7 +531,8 @@ onMounted(async () => {
   overflow: hidden;
   background: var(--color-background-mute);
 }
-
+.sidebar ul { list-style: none; padding: 0; }
+.sidebar li { padding: 6px; margin-bottom: 5px; background: #374151; border-radius: 4px; cursor: grab; }
 .main-content {
   flex: 1;
   display: flex;

@@ -1,4 +1,5 @@
 from django.db import models
+import rdflib
 
 class CausalGraph(models.Model):
     name = models.CharField(max_length=100)
@@ -27,3 +28,13 @@ class CausalEdge(models.Model):
 
     def __str__(self):
         return f"{self.source.name} -> {self.target.name}"
+
+class KnowledgeGraph(models.Model):
+    name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+class KnowledgeGraphTriple(models.Model):
+    graph = models.ForeignKey(KnowledgeGraph, related_name="triples", on_delete=models.CASCADE)
+    subject = models.TextField()
+    predicate = models.TextField()
+    object = models.TextField()

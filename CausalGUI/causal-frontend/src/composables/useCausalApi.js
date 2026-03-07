@@ -7,6 +7,20 @@ function getErrorMessage(error, fallbackMessage) {
   return fallbackMessage
 }
 
+function isRouteNotFound(error) {
+  if (error?.response?.status !== 404) {
+    return false
+  }
+
+  const detail = error?.response?.data?.detail
+  if (typeof detail !== "string") {
+    return false
+  }
+
+  const normalized = detail.trim().toLowerCase()
+  return normalized === "not found." || normalized === "not found"
+}
+
 export function useCausalApi(httpClient = axios) {
   async function uploadCsv(file) {
     const formData = new FormData()
@@ -39,8 +53,22 @@ export function useCausalApi(httpClient = axios) {
   }
 
   async function assessQuery(payload) {
-    const response = await httpClient.post("/api/assess_query/", payload)
-    return response.data
+    const endpoints = ["/api/assess_query/", "/api/assess-query/", "/api/assess_query", "/api/assess-query"]
+    let lastError = null
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await httpClient.post(endpoint, payload)
+        return response.data
+      } catch (error) {
+        lastError = error
+        if (!isRouteNotFound(error)) {
+          throw error
+        }
+      }
+    }
+
+    throw lastError
   }
 
   async function fetchGraphDetails(graphId) {

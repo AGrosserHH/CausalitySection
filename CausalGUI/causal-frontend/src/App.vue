@@ -1,6 +1,13 @@
 <template>
   <div class="app-container">
-    <DatasetSidebar :variables="variables" @file-upload="handleFileUpload" @drag-start="onDragStart" />
+    <DatasetSidebar
+      :variables="variables"
+      :dataset-name="datasetName"
+      :graph-id="graphId"
+      :preview-rows="datasetPreviewRows"
+      @file-upload="handleFileUpload"
+      @drag-start="onDragStart"
+    />
 
     <main class="main-content">
       <header class="page-header">
@@ -48,12 +55,14 @@
           @save="saveGraph"
           @suggest="suggestGraphEdges"
           @run="computeInference"
+          @reset="resetAnalysisWorkspace"
         />
       </section>
 
       <InferenceResult
         :inference-result="inferenceResult"
         :causal-graph-image-url="causalGraphImageUrl"
+        :inference-response="inferenceResponse"
       />
 
       <section v-if="assessmentResult" class="assessment-panel">
@@ -109,7 +118,25 @@
       <section class="robustness-panel">
         <div class="panel-header">
           <h3 class="assessment-title">Refutation &amp; Sensitivity Dashboard</h3>
-          <button class="panel-action" type="button" @click="runRobustness">Run checks</button>
+          <div class="panel-actions">
+            <button class="panel-action" type="button" @click="runRobustness">Run checks</button>
+            <button
+              class="panel-action"
+              type="button"
+              :disabled="!robustnessResult"
+              @click="exportRobustness('json')"
+            >
+              Export JSON
+            </button>
+            <button
+              class="panel-action"
+              type="button"
+              :disabled="!robustnessResult"
+              @click="exportRobustness('csv')"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
 
         <template v-if="robustnessResult">
@@ -150,6 +177,24 @@
       <section class="counterfactual-panel">
         <div class="panel-header">
           <h3 class="assessment-title">Counterfactual, What-if &amp; Root-cause</h3>
+          <div class="panel-actions">
+            <button
+              class="panel-action"
+              type="button"
+              :disabled="!whatIfResult && !rootCauseResult"
+              @click="exportCounterfactual('json')"
+            >
+              Export JSON
+            </button>
+            <button
+              class="panel-action"
+              type="button"
+              :disabled="!whatIfResult && !rootCauseResult"
+              @click="exportCounterfactual('csv')"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
 
         <div class="what-if-controls">
@@ -232,7 +277,10 @@ const {
 
 const variables = ref([])
 const graphId = ref(null)
+const datasetName = ref("")
+const datasetPreviewRows = ref([])
 const inferenceResult = ref(null)
+const inferenceResponse = ref(null)
 const causalGraphImageUrl = ref("")
 const selectedTreatment = ref("")
 const selectedOutcome = ref("")
@@ -246,6 +294,7 @@ const robustnessResult = ref(null)
 const whatIfTreatmentValue = ref(0)
 const whatIfResult = ref(null)
 const rootCauseResult = ref(null)
+const ENABLE_INFERENCE_DEBUG = import.meta.env.DEV
 
 const cyContainer = ref(null)
 const cy = ref(null)
@@ -502,8 +551,66 @@ function relayoutGraph() {
     .run()
 }
 
-async function handleFileUpload(event) {
-  const file = event.target.files?.[0]
+function getCanvasEdges() {
+  if (!cy.value) {
+    return []
+  }
+
+  return cy.value.edges().toArray().map((edge) => ({
+      source: edge.data("source"),
+      target: edge.data("target"),
+      directed: true,
+      manual_lock: Boolean(edge.data("manual_lock")),
+      evidence: Array.isArray(edge.data("evidence")) ? edge.data("evidence") : [],
+    }))
+}
+
+function hasCanvasEdges() {
+  return getCanvasEdges().length > 0
+}
+
+async function persistGraphEdges(showSuccessStatus = false) {
+  if (!graphId.value) {
+    setStatus("Upload a dataset before saving graph edges.", "error")
+    return false
+  }
+
+  const edges = getCanvasEdges()
+  if (!edges.length) {
+    setStatus("Add at least one edge before running analysis.", "error")
+    return false
+  }
+
+  try {
+    const responseData = await saveGraphApi({
+      graph_id: graphId.value,
+      name: "UserGraph",
+      edges,
+    })
+    graphId.value = responseData.graph_id
+    await refreshGraphDetails()
+    if (showSuccessStatus) {
+      setStatus(`Graph saved with ID ${graphId.value}.`)
+    }
+    return true
+  } catch (error) {
+    setStatus(getErrorMessage(error, "Failed to save graph."), "error")
+    return false
+  }
+}
+
+async function resetGraphCanvas() {
+  if (cy.value) {
+    cy.value.destroy()
+    cy.value = null
+  }
+
+  startNode.value = null
+  endNode.value = null
+  await initializeGraph()
+}
+
+async function handleFileUpload(file) {
   if (!file) {
     return
   }
@@ -517,49 +624,46 @@ async function handleFileUpload(event) {
     const responseData = await uploadCsv(file)
     graphId.value = responseData.graph_id
     variables.value = responseData.variables
+    datasetName.value = responseData.graph_name || file.name
+    datasetPreviewRows.value = Array.isArray(responseData.preview) ? responseData.preview : []
     selectedTreatment.value = ""
     selectedOutcome.value = ""
     inferenceResult.value = null
+    inferenceResponse.value = null
     causalGraphImageUrl.value = ""
     assessmentResult.value = null
     robustnessResult.value = null
     whatIfResult.value = null
     rootCauseResult.value = null
-    clearStatus()
+    await resetGraphCanvas()
+    setStatus(
+      `Dataset connected: ${datasetName.value}. ${variables.value.length} column${variables.value.length === 1 ? "" : "s"} loaded; drag variables to add nodes to the graph.`,
+    )
   } catch (error) {
+    datasetPreviewRows.value = []
     setStatus(getErrorMessage(error, "CSV upload failed."), "error")
   }
 }
 
 async function saveGraph() {
-  if (!graphId.value) {
-    setStatus("Upload a dataset before saving graph edges.", "error")
-    return
-  }
+  await persistGraphEdges(true)
+}
 
-  const edges = cy.value
-    .edges()
-    .map((edge) => ({
-      source: edge.data("source"),
-      target: edge.data("target"),
-      directed: true,
-      manual_lock: Boolean(edge.data("manual_lock")),
-      evidence: Array.isArray(edge.data("evidence")) ? edge.data("evidence") : [],
-    }))
-    .toArray()
-
-  try {
-    const responseData = await saveGraphApi({
-      graph_id: graphId.value,
-      name: "UserGraph",
-      edges,
-    })
-    graphId.value = responseData.graph_id
-    await refreshGraphDetails()
-    setStatus(`Graph saved with ID ${graphId.value}.`)
-  } catch (error) {
-    setStatus(getErrorMessage(error, "Failed to save graph."), "error")
-  }
+async function resetAnalysisWorkspace() {
+  await resetGraphCanvas()
+  selectedTreatment.value = ""
+  selectedOutcome.value = ""
+  selectedMethod.value = ""
+  inferenceResult.value = null
+  inferenceResponse.value = null
+  causalGraphImageUrl.value = ""
+  assessmentResult.value = null
+  robustnessResult.value = null
+  whatIfResult.value = null
+  rootCauseResult.value = null
+  edgeEvidenceList.value = []
+  clearStatus()
+  setStatus("Workspace reset. Dataset remains loaded; drag variables to rebuild the graph.")
 }
 
 async function suggestGraphEdges() {
@@ -610,12 +714,19 @@ function canRunAssessment() {
     Boolean(selectedTreatment.value) &&
     Boolean(selectedOutcome.value) &&
     Boolean(cy.value) &&
-    cy.value.nodes().length >= 2
+    cy.value.nodes().length >= 2 &&
+    hasCanvasEdges()
   )
 }
 
 async function refreshAssessment(showErrors = false) {
   if (!canRunAssessment()) {
+    assessmentResult.value = null
+    return null
+  }
+
+  const saved = await persistGraphEdges(false)
+  if (!saved) {
     assessmentResult.value = null
     return null
   }
@@ -644,6 +755,11 @@ async function runRobustness() {
     return
   }
 
+  const saved = await persistGraphEdges(false)
+  if (!saved) {
+    return
+  }
+
   try {
     const responseData = await runRobustnessDashboard({
       graph_id: graphId.value,
@@ -660,6 +776,11 @@ async function runRobustness() {
 async function runWhatIf() {
   if (!canRunAssessment()) {
     setStatus("Select treatment/outcome and ensure graph has at least two nodes.", "error")
+    return
+  }
+
+  const saved = await persistGraphEdges(false)
+  if (!saved) {
     return
   }
 
@@ -683,6 +804,11 @@ async function runRootCause() {
     return
   }
 
+  const saved = await persistGraphEdges(false)
+  if (!saved) {
+    return
+  }
+
   try {
     const responseData = await runRootCauseAnalysis({
       graph_id: graphId.value,
@@ -695,47 +821,216 @@ async function runRootCause() {
   }
 }
 
+function downloadTextFile(content, fileName, mimeType) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function toCsv(rows) {
+  if (!rows.length) {
+    return ""
+  }
+
+  const headers = Object.keys(rows[0])
+  const headerLine = headers.join(",")
+  const bodyLines = rows.map((row) =>
+    headers
+      .map((header) => {
+        const value = row[header]
+        const text = value === null || value === undefined ? "" : String(value)
+        const escaped = text.replace(/"/g, '""')
+        return `"${escaped}"`
+      })
+      .join(","),
+  )
+
+  return [headerLine, ...bodyLines].join("\n")
+}
+
+function exportRobustness(format) {
+  if (!robustnessResult.value) {
+    return
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+  if (format === "json") {
+    const content = JSON.stringify(robustnessResult.value, null, 2)
+    downloadTextFile(content, `robustness-dashboard-${stamp}.json`, "application/json")
+    return
+  }
+
+  const rows = []
+  for (const item of robustnessResult.value.estimator_comparison || []) {
+    rows.push({
+      section: "estimator_comparison",
+      key: item.method_name,
+      status: item.error ? "error" : "ok",
+      value: item.estimated_effect ?? "",
+      details: item.error || "",
+    })
+  }
+  for (const [key, value] of Object.entries(robustnessResult.value.refutations || {})) {
+    rows.push({
+      section: "refutation",
+      key,
+      status: value?.status || "",
+      value: value?.p_value ?? "",
+      details: value?.summary || "",
+    })
+  }
+  for (const [key, value] of Object.entries(robustnessResult.value.sensitivity || {})) {
+    rows.push({
+      section: "sensitivity",
+      key,
+      status: value?.status || "",
+      value: value?.p_value ?? "",
+      details: value?.summary || "",
+    })
+  }
+  const content = toCsv(rows)
+  downloadTextFile(content, `robustness-dashboard-${stamp}.csv`, "text/csv;charset=utf-8")
+}
+
+function exportCounterfactual(format) {
+  const payload = {
+    what_if: whatIfResult.value,
+    root_cause: rootCauseResult.value,
+  }
+  if (!payload.what_if && !payload.root_cause) {
+    return
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+  if (format === "json") {
+    const content = JSON.stringify(payload, null, 2)
+    downloadTextFile(content, `counterfactual-root-cause-${stamp}.json`, "application/json")
+    return
+  }
+
+  const rows = []
+  if (payload.what_if) {
+    rows.push(
+      {
+        section: "what_if",
+        key: "baseline_outcome_mean",
+        value: payload.what_if.baseline_outcome_mean,
+        details: "",
+      },
+      {
+        section: "what_if",
+        key: "baseline_treatment_mean",
+        value: payload.what_if.baseline_treatment_mean,
+        details: "",
+      },
+      {
+        section: "what_if",
+        key: "estimated_ate",
+        value: payload.what_if.estimated_ate ?? "",
+        details: payload.what_if.note || "",
+      },
+      {
+        section: "what_if",
+        key: "counterfactual_outcome_mean",
+        value: payload.what_if.counterfactual_outcome_mean ?? "",
+        details: "",
+      },
+    )
+  }
+  for (const item of payload.root_cause?.anomaly_attribution || []) {
+    rows.push({
+      section: "anomaly_attribution",
+      key: item.variable,
+      value: item.score,
+      details: item.details || "",
+    })
+  }
+  for (const item of payload.root_cause?.distribution_change_attribution || []) {
+    rows.push({
+      section: "distribution_change_attribution",
+      key: item.variable,
+      value: item.score,
+      details: item.details || "",
+    })
+  }
+
+  const content = toCsv(rows)
+  downloadTextFile(content, `counterfactual-root-cause-${stamp}.csv`, "text/csv;charset=utf-8")
+}
+
 async function computeInference() {
+  console.info("[analysis] Run inference requested")
+
   if (!graphId.value) {
     setStatus("Upload a dataset before running inference.", "error")
+    console.warn("[analysis] Inference blocked: missing graph_id")
     return
   }
 
   if (!selectedTreatment.value || !selectedOutcome.value) {
     setStatus("Select treatment and outcome variables.", "error")
+    console.warn("[analysis] Inference blocked: treatment/outcome not selected")
     return
   }
 
   if (cy.value.nodes().length < 2) {
     setStatus("At least two nodes are required.", "error")
+    console.warn("[analysis] Inference blocked: fewer than 2 nodes on canvas")
+    return
+  }
+
+  const saved = await persistGraphEdges(false)
+  if (!saved) {
+    console.warn("[analysis] Inference blocked: could not persist graph edges")
     return
   }
 
   try {
     const assessment = await refreshAssessment(true)
     if (!assessment) {
+      console.warn("[analysis] Inference blocked: assessment did not return a result")
       return
     }
 
-    if (assessment?.badge === "reject") {
+    const rejectedAssessment = assessment?.badge === "reject"
+    if (rejectedAssessment) {
       setStatus(
-        assessment?.reasons?.[0] || "Identification failed for this query. Update the graph.",
+        `${assessment?.reasons?.[0] || "Identification checks rejected this query."} Running inference anyway.`,
         "error",
       )
-      return
     }
 
-    const responseData = await runInference({
-      treatment: selectedTreatment.value,
-      outcome: selectedOutcome.value,
-      graph_id: graphId.value,
-      method_name: selectedMethod.value,
-    })
+    const payload = {
+      graph_id: Number(graphId.value),
+      treatment: Number(selectedTreatment.value),
+      outcome: Number(selectedOutcome.value),
+    }
 
+    if (selectedMethod.value) {
+      payload.method_name = selectedMethod.value
+    }
+
+    if (ENABLE_INFERENCE_DEBUG) {
+      console.debug("[inference payload]", payload)
+    }
+
+    console.info("[analysis] Inference started", payload)
+
+    const responseData = await runInference(payload)
+
+    inferenceResponse.value = responseData
     inferenceResult.value = responseData.estimated_effect ?? "N/A"
     causalGraphImageUrl.value = responseData.graph_image ?? ""
-    clearStatus()
+    console.info("[analysis] Inference completed", responseData)
+    if (!rejectedAssessment) {
+      setStatus("Analysis completed. Check Inference Result panel and console output.")
+    }
   } catch (error) {
+    console.error("[analysis] Inference failed", error)
     setStatus(getErrorMessage(error, "Causal inference failed."), "error")
   }
 }
@@ -1016,6 +1311,12 @@ watch([graphId, selectedTreatment, selectedOutcome], () => {
   gap: 8px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .panel-action {
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -1024,6 +1325,11 @@ watch([graphId, selectedTreatment, selectedOutcome], () => {
   padding: 6px 10px;
   cursor: pointer;
   font-size: 0.84rem;
+}
+
+.panel-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .robustness-panel,

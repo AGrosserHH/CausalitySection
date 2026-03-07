@@ -32,6 +32,7 @@
     <button class="btn btn-save" type="button" @click="$emit('save')">💾 Save Graph</button>
     <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Draft + Verify</button>
     <button class="btn btn-run" type="button" @click="$emit('run')">🔍 Run Inference</button>
+    <button class="btn btn-reset" type="button" @click="$emit('reset')">♻️ Reset</button>
   </div>
 </template>
 
@@ -62,6 +63,7 @@ const emit = defineEmits([
   "save",
   "suggest",
   "run",
+  "reset",
 ])
 
 function normalizeId(value) {
@@ -145,6 +147,10 @@ function onMethodChange(event) {
 
 .btn-ai {
   background: #7c3aed;
+}
+
+.btn-reset {
+  background: #6b7280;
 }
 
 @media (max-width: 768px) {

@@ -7,3 +7,4 @@ matplotlib==3.10.1
 dowhy==0.14
 numpy>=2.2,<3
 openai>=1.66,<2
+rdflib>=7.0,<8

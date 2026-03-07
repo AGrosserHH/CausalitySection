@@ -82,3 +82,37 @@ npm run build
 - Uploaded datasets and generated graph images are written under `causalproject/media/`.
 - Workspace Python interpreter is configured in `.vscode/settings.json` to use `.venv` at repository root.
 - AI edge suggestions are available at `POST /api/openai/suggest_edges/` when `OPENAI_API_KEY` is configured.
+
+## Current Interaction Flow
+
+1. Upload CSV from the Dataset sidebar.
+2. Select variables from the sidebar and drag them onto the canvas as nodes.
+3. Create directed edges by right-dragging between nodes.
+4. Choose treatment/outcome in Controls and run inference.
+
+Important behavior:
+
+- Uploading a CSV does **not** auto-add nodes/edges to the canvas.
+- The `Reset` button clears canvas and analysis results, while keeping the uploaded dataset/variables loaded.
+
+## Data Preprocessing (Backend)
+
+Before analysis, the backend applies column-wise preprocessing:
+
+- Boolean-like values (`true/false`, `yes/no`, `1/0`) are converted to numeric.
+- Numeric-like strings are coerced to numeric.
+- Datetime-like values are converted to epoch seconds.
+- Remaining text/categorical columns are encoded to category codes.
+- `inf/-inf` values are replaced and missing numeric values are imputed (median fallback, else `0.0`).
+
+This reduces failures from mixed column types and missing values during causal estimation.
+
+## Troubleshooting
+
+- `POST /api/assess_query/ 404` while selecting variables:
+	- Ensure edges are saved (the frontend now persists edges before assessment).
+	- Confirm Django server is running and frontend proxy points to `127.0.0.1:8000`.
+- `Found unknown categories ... during transform`:
+	- Backend now falls back to safer estimation paths automatically.
+- `exog contains inf or nans`:
+	- Addressed by preprocessing/imputation; restart Django after pulling latest changes.

@@ -9,10 +9,23 @@ This repository contains experiments and a working prototype GUI for causal infe
 
 ## Start Here
 
-For app setup and run instructions, see:
+- App setup, backend/frontend runbook, and API feature notes: `CausalGUI/README.md`
+- Notebook-focused dependencies and experiments: `CausalModels/requirements.txt`
 
-- `CausalGUI/README.md`
+## Root Shortcuts
 
-For notebook-focused dependency setup, see:
+From repository root, these scripts proxy to the frontend workspace:
 
-- `CausalModels/requirements.txt`
+```bash
+npm run dev
+npm run lint
+npm run test
+npm run build
+```
+
+For backend tests from root:
+
+```bash
+cd CausalGUI/causalproject
+..\..\.venv\Scripts\python.exe manage.py test
+```

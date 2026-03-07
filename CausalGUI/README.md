@@ -5,6 +5,8 @@ Full-stack causal graph builder with:
 - Django REST API (`causalproject/`)
 - Vue 3 + Vite frontend (`causal-frontend/`)
 
+This is the canonical setup and operations runbook for the app. For repository-level overview, see `../README.md`.
+
 ## Prerequisites
 
 - Python 3.10+
@@ -47,6 +49,15 @@ npm run dev
 
 Frontend runs at `http://localhost:5173` and proxies `/api` to Django.
 
+From the repository root, you can also run frontend commands through root scripts:
+
+```bash
+npm run dev
+npm run lint
+npm run test
+npm run build
+```
+
 ## Development Commands
 
 ### Backend
@@ -70,3 +81,4 @@ npm run build
 - The top-level `requirement.txt` now delegates to backend requirements.
 - Uploaded datasets and generated graph images are written under `causalproject/media/`.
 - Workspace Python interpreter is configured in `.vscode/settings.json` to use `.venv` at repository root.
+- AI edge suggestions are available at `POST /api/openai/suggest_edges/` when `OPENAI_API_KEY` is configured.

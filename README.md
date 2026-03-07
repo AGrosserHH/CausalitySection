@@ -1,7 +1,18 @@
-# Causality
+# Causality Section
 
-CausalityAI is an emerging field at the intersection of artificial intelligence and causal inference. It focuses on understanding not just correlations in data, but the underlying cause-and-effect relationships. This approach enables AI systems to make better decisions, simulate interventions, and predict outcomes under hypothetical scenarios. CausalityAI leverages tools like directed acyclic graphs (DAGs), structural equation modeling, and frameworks such as DoWhy or CausalNex. By incorporating causal reasoning, AI moves closer to human-like understanding and robust generalization beyond observed data.
+This repository contains experiments and a working prototype GUI for causal inference workflows.
 
-I like to play in this field and I finally developed a small prototype GUI for playing for CausalAI.
+## Project Layout
 
-![CausalityAI GUI Screenshot](CausalAIGUI.png)
+- `CausalGUI/` - full-stack app (Django API + Vue frontend)
+- `CausalModels/` - notebooks and modeling experiments
+
+## Start Here
+
+For app setup and run instructions, see:
+
+- `CausalGUI/README.md`
+
+For notebook-focused dependency setup, see:
+
+- `CausalModels/requirements.txt`

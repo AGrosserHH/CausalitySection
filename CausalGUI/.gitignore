@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+
+# Environments
+.env
+.venv/
+venv/
+
+# Django uploads and generated files
+causalproject/media/
+causalproject/logs/
+
+# Frontend
+causal-frontend/node_modules/
+causal-frontend/dist/

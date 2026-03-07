@@ -1,32 +1,36 @@
 # causal-frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + Vite client for the CausalGUI project.
 
-## Recommended IDE Setup
+## Requirements
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- Node.js 20+
+- npm
 
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-nvm use 23.9.0
+## Install
 
 ```sh
 npm install
 ```
 
-### Compile and Hot-Reload for Development
+## Run
 
 ```sh
 npm run dev
 ```
 
-### Compile and Minify for Production
+The app runs on `http://localhost:5173` and proxies API calls to `http://127.0.0.1:8000`.
+
+## Quality Commands
 
 ```sh
+npm run lint
+npm run test
 npm run build
 ```
 
+## Main Structure
+
+- `src/App.vue` - page orchestration
+- `src/components/` - UI components
+- `src/composables/useCausalApi.js` - API client wrapper

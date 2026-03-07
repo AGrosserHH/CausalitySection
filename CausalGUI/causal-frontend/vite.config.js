@@ -23,6 +23,32 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (id.includes('cytoscape')) {
+            return 'cytoscape'
+          }
+
+          if (id.includes('/vue/') || id.includes('@vue')) {
+            return 'vue'
+          }
+
+          return 'vendor'
+        }
+      }
+    }
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    include: ['src/**/*.spec.js']
   }
 })
 

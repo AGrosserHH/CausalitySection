@@ -7,7 +7,26 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import CausalEdge, CausalGraph
+from .models import CausalEdge, CausalGraph, EdgeEvidence
+
+
+class _FakeIdentifiedEstimand:
+	def get_backdoor_variables(self):
+		return ["C"]
+
+	def get_instrumental_variables(self):
+		return []
+
+	def get_frontdoor_variables(self):
+		return []
+
+
+class _FakeCausalModel:
+	def __init__(self, *args, **kwargs):
+		pass
+
+	def identify_effect(self):
+		return _FakeIdentifiedEstimand()
 
 
 class CausalApiTests(APITestCase):
@@ -138,3 +157,110 @@ class CausalApiTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertEqual(response.data["estimated_effect"], 1.23)
 		self.assertEqual(response.data["graph_image"], "/media/causal_graphs/test.png")
+
+	@patch("causal_app.views.get_causal_model_class", return_value=_FakeCausalModel)
+	def test_assess_query_success(self, _mock_model_class):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Assess Graph",
+				"edges": [
+					{"source": "A", "target": "B", "directed": True},
+					{"source": "C", "target": "B", "directed": True},
+				],
+			},
+			format="json",
+		)
+
+		variable_by_name = {item["name"]: item["id"] for item in response_data["variables"]}
+
+		response = self.client.post(
+			"/api/assess_query/",
+			{
+				"graph_id": graph_id,
+				"treatment": variable_by_name["A"],
+				"outcome": variable_by_name["B"],
+				"estimand": "ATE",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertTrue(response.data["identifiable"])
+		self.assertEqual(response.data["badge"], "trust")
+		self.assertIn("C", response.data["adjustment_set"])
+
+	def test_graph_details_returns_evidence_status(self):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+
+		save_response = self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Evidence Graph",
+				"edges": [
+					{
+						"source": "A",
+						"target": "B",
+						"directed": True,
+						"manual_lock": True,
+						"evidence": [
+							{
+								"evidence_type": "llm",
+								"status": "supported",
+								"score": 0.85,
+								"details": {"reason": "strong"},
+							}
+						],
+					},
+				],
+			},
+			format="json",
+		)
+		self.assertEqual(save_response.status_code, status.HTTP_200_OK)
+
+		self.assertEqual(EdgeEvidence.objects.count(), 1)
+
+		response = self.client.get(f"/api/graphs/{graph_id}/")
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response.data["edges"]), 1)
+		edge_data = response.data["edges"][0]
+		self.assertTrue(edge_data["manual_lock"])
+		self.assertEqual(edge_data["status"], "supported")
+
+	@patch(
+		"causal_app.views.suggest_edges_with_openai",
+		return_value=[
+			{
+				"source": "A",
+				"target": "B",
+				"directed": True,
+				"reason": "A likely influences B",
+			}
+		],
+	)
+	@override_settings(OPENAI_API_KEY="test-key")
+	def test_openai_draft_graph_success(self, _mock_suggestions):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+
+		response = self.client.post(
+			"/api/openai/draft_graph/",
+			{
+				"graph_id": graph_id,
+				"context": "churn analysis",
+				"max_edges": 3,
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("edges", response.data)
+		self.assertEqual(len(response.data["edges"]), 1)
+		self.assertIn("verification_status", response.data["edges"][0])
+		self.assertIn("confounder_candidates", response.data)

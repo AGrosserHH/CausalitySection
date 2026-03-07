@@ -30,7 +30,7 @@
     </label>
 
     <button class="btn btn-save" type="button" @click="$emit('save')">💾 Save Graph</button>
-    <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Suggest Edges</button>
+    <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Draft + Verify</button>
     <button class="btn btn-run" type="button" @click="$emit('run')">🔍 Run Inference</button>
   </div>
 </template>

@@ -1,5 +1,4 @@
 from django.db import models
-import rdflib
 
 class CausalGraph(models.Model):
     name = models.CharField(max_length=100)
@@ -22,12 +21,41 @@ class CausalEdge(models.Model):
     source = models.ForeignKey(Variable, related_name='source_edges', on_delete=models.CASCADE)
     target = models.ForeignKey(Variable, related_name='target_edges', on_delete=models.CASCADE)
     directed = models.BooleanField(default=True)
+    manual_lock = models.BooleanField(default=False)
 
     class Meta:
         unique_together = (('graph', 'source', 'target'),)
 
     def __str__(self):
         return f"{self.source.name} -> {self.target.name}"
+
+
+class EdgeEvidence(models.Model):
+    EVIDENCE_TYPE_CHOICES = [
+        ("semantic_prior", "Semantic Prior"),
+        ("ci_test", "Conditional Independence Evidence"),
+        ("score_search", "Score Search Support"),
+        ("temporal_prior", "Temporal Prior"),
+        ("manual", "Manual Lock"),
+        ("llm", "LLM Suggestion"),
+    ]
+
+    STATUS_CHOICES = [
+        ("supported", "Supported"),
+        ("weak", "Weak Support"),
+        ("rejected", "Rejected"),
+        ("conflict", "Conflict"),
+    ]
+
+    edge = models.ForeignKey(CausalEdge, related_name="evidences", on_delete=models.CASCADE)
+    evidence_type = models.CharField(max_length=30, choices=EVIDENCE_TYPE_CHOICES)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="supported")
+    score = models.FloatField(null=True, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.edge} [{self.evidence_type}:{self.status}]"
 
 class KnowledgeGraph(models.Model):
     name = models.CharField(max_length=255)

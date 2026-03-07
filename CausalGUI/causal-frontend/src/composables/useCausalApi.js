@@ -33,11 +33,47 @@ export function useCausalApi(httpClient = axios) {
     return response.data
   }
 
+  async function draftGraph(payload) {
+    const response = await httpClient.post("/api/openai/draft_graph/", payload)
+    return response.data
+  }
+
+  async function assessQuery(payload) {
+    const response = await httpClient.post("/api/assess_query/", payload)
+    return response.data
+  }
+
+  async function fetchGraphDetails(graphId) {
+    const response = await httpClient.get(`/api/graphs/${graphId}/`)
+    return response.data
+  }
+
+  async function runRobustnessDashboard(payload) {
+    const response = await httpClient.post("/api/robustness_dashboard/", payload)
+    return response.data
+  }
+
+  async function runWhatIfAnalysis(payload) {
+    const response = await httpClient.post("/api/what_if_analysis/", payload)
+    return response.data
+  }
+
+  async function runRootCauseAnalysis(payload) {
+    const response = await httpClient.post("/api/root_cause_analysis/", payload)
+    return response.data
+  }
+
   return {
     uploadCsv,
     saveGraph,
     runInference,
     suggestEdges,
+    draftGraph,
+    assessQuery,
+    fetchGraphDetails,
+    runRobustnessDashboard,
+    runWhatIfAnalysis,
+    runRootCauseAnalysis,
     getErrorMessage,
   }
 }

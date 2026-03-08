@@ -630,14 +630,14 @@ def compute_root_cause_attributions(
             {
                 "variable": column,
                 "score": anomaly_shift * corr,
-                "details": "Anomaly mean shift × |corr(var, outcome)|",
+                "details": "Anomaly mean shift x |corr(var, outcome)|",
             }
         )
         dist_change_scores.append(
             {
                 "variable": column,
                 "score": dist_shift * corr,
-                "details": "Temporal distribution shift × |corr(var, outcome)|",
+                "details": "Temporal distribution shift x |corr(var, outcome)|",
             }
         )
 

@@ -39,13 +39,17 @@ npm run build
 
 1. Upload a CSV in the Dataset panel.
 2. Drag variables to the canvas to create nodes.
-3. Right-drag from one node to another to create edges.
-4. Select treatment/outcome and click **Run Inference**.
+3. Drag from a node handle to another node to create an edge.
+4. Right-drag from one node to another as fallback if handle gestures are not available.
+5. Use controls for auto-layout, delete selected, undo/redo, zoom in/out, fit, and center.
+6. Select treatment/outcome and click **Run Inference**.
 
 Notes:
 
 - CSV upload loads variables and preview only; it does not auto-create graph nodes/edges.
 - The **Reset** button clears graph + analysis outputs but keeps uploaded dataset variables available.
+- Shift-drag performs box selection and the Canvas Details panel shows selected node/edge metadata.
+- Node positions are included in save payloads and restored from backend graph details.
 
 ## Debug Visibility
 

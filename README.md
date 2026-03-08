@@ -12,7 +12,7 @@ This repository contains experiments and a working prototype GUI for causal infe
 - App setup, backend/frontend runbook, and API feature notes: `CausalGUI/README.md`
 - Notebook-focused dependencies and experiments: `CausalModels/requirements.txt`
 
-Recent UX and backend behavior updates (manual node creation after upload, reset behavior, preprocessing, and troubleshooting) are documented in `CausalGUI/README.md`.
+Recent UX and backend behavior updates (node position persistence, canvas controls, and troubleshooting) are documented in `CausalGUI/README.md`.
 
 ## Root Shortcuts
 
@@ -30,4 +30,12 @@ For backend tests from root:
 ```bash
 cd CausalGUI/causalproject
 ..\..\.venv\Scripts\python.exe manage.py test
+```
+
+For backend runtime from root:
+
+```bash
+cd CausalGUI/causalproject
+..\..\.venv\Scripts\python.exe manage.py migrate
+..\..\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```

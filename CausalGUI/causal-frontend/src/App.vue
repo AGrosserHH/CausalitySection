@@ -10,7 +10,7 @@
 
     <main class="main-content">
       <header class="page-header">
-        <h1 class="title">🧠 Causal AI Graph Builder</h1>
+        <h1 class="title">Causal AI Graph Builder</h1>
         <p class="subtitle">Build a causal graph by dragging variables, then save and run inference.</p>
       </header>
 
@@ -27,16 +27,16 @@
           <div class="legend-row">
             <div class="legend-group">
               <span class="legend-label">Query badge:</span>
-              <span class="legend-chip legend-trust"><span aria-hidden="true">●</span> <span class="sr-only">Query badge:</span>trust</span>
-              <span class="legend-chip legend-caution"><span aria-hidden="true">▲</span> <span class="sr-only">Query badge:</span>caution</span>
-              <span class="legend-chip legend-reject"><span aria-hidden="true">✕</span> <span class="sr-only">Query badge:</span>reject</span>
+              <span class="legend-chip legend-trust"><span aria-hidden="true">*</span> <span class="sr-only">Query badge:</span>trust</span>
+              <span class="legend-chip legend-caution"><span aria-hidden="true">^</span> <span class="sr-only">Query badge:</span>caution</span>
+              <span class="legend-chip legend-reject"><span aria-hidden="true">x</span> <span class="sr-only">Query badge:</span>reject</span>
             </div>
             <div class="legend-group">
               <span class="legend-label">Edge status:</span>
-              <span class="legend-chip legend-supported"><span aria-hidden="true">●</span> <span class="sr-only">Edge status:</span>supported</span>
-              <span class="legend-chip legend-weak"><span aria-hidden="true">▲</span> <span class="sr-only">Edge status:</span>weak</span>
-              <span class="legend-chip legend-conflict"><span aria-hidden="true">✕</span> <span class="sr-only">Edge status:</span>conflict</span>
-              <span class="legend-chip legend-manual"><span aria-hidden="true">🔒</span> <span class="sr-only">Edge status:</span>manual lock</span>
+              <span class="legend-chip legend-supported"><span aria-hidden="true">*</span> <span class="sr-only">Edge status:</span>supported</span>
+              <span class="legend-chip legend-weak"><span aria-hidden="true">^</span> <span class="sr-only">Edge status:</span>weak</span>
+              <span class="legend-chip legend-conflict"><span aria-hidden="true">x</span> <span class="sr-only">Edge status:</span>conflict</span>
+              <span class="legend-chip legend-manual"><span aria-hidden="true">L</span> <span class="sr-only">Edge status:</span>manual lock</span>
             </div>
           </div>
           <GraphCanvas
@@ -80,7 +80,7 @@
         <div class="assessment-header">
           <h3 class="assessment-title">Canvas Details</h3>
           <span class="legend-label">
-            {{ graphCanvasState.nodeCount }} node{{ graphCanvasState.nodeCount === 1 ? "" : "s" }} · {{ graphCanvasState.edgeCount }} edge{{ graphCanvasState.edgeCount === 1 ? "" : "s" }}
+            {{ graphCanvasState.nodeCount }} node{{ graphCanvasState.nodeCount === 1 ? "" : "s" }} | {{ graphCanvasState.edgeCount }} edge{{ graphCanvasState.edgeCount === 1 ? "" : "s" }}
           </span>
         </div>
 
@@ -91,7 +91,7 @@
         </template>
 
         <template v-else-if="selectedGraphElement?.type === 'edge'">
-          <p class="assessment-line"><strong>Edge:</strong> {{ selectedGraphElement.source }} → {{ selectedGraphElement.target }}</p>
+          <p class="assessment-line"><strong>Edge:</strong> {{ selectedGraphElement.source }} -> {{ selectedGraphElement.target }}</p>
           <p class="assessment-line"><strong>Status:</strong> {{ selectedGraphElement.status }}</p>
           <p class="assessment-line"><strong>Manual lock:</strong> {{ selectedGraphElement.manualLock ? "yes" : "no" }}</p>
           <p class="assessment-line"><strong>Evidence count:</strong> {{ selectedGraphElement.evidenceCount }}</p>
@@ -291,8 +291,8 @@
         <h3 class="evidence-title">Edge Evidence</h3>
         <ul class="evidence-list">
           <li v-for="item in edgeEvidenceList" :key="item.key">
-            <strong>{{ item.source }} → {{ item.target }}</strong>
-            <span> · {{ item.status }} · {{ item.evidenceCount }} evidence item(s)</span>
+            <strong>{{ item.source }} -> {{ item.target }}</strong>
+            <span> | {{ item.status }} | {{ item.evidenceCount }} evidence item(s)</span>
           </li>
         </ul>
       </section>

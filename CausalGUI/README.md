@@ -16,11 +16,11 @@ This is the canonical setup and operations runbook for the app. For repository-l
 
 ```bash
 cd causalproject
-..\.venv\Scripts\activate
+..\..\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
-python manage.py runserver
+python manage.py runserver 127.0.0.1:8000
 ```
 
 If you prefer an isolated backend-only environment, create and activate `causalproject/.venv` instead.
@@ -64,6 +64,7 @@ npm run build
 
 ```bash
 cd causalproject
+python manage.py migrate
 python manage.py test
 ```
 
@@ -88,8 +89,9 @@ npm run build
 1. Upload CSV from the Dataset sidebar.
 2. Select variables from the sidebar and drag them onto the canvas as nodes.
 3. Create directed edges by dragging from a node handle to another node.
-4. Use the Controls panel for auto-layout, delete selected, undo/redo, and zoom/fit/center actions.
-5. Choose treatment/outcome in Controls and run inference.
+4. If handle gestures are unreliable in your browser/session, right-drag from a source node to a target node as fallback.
+5. Use the Controls panel for auto-layout, delete selected, undo/redo, and zoom/fit/center actions.
+6. Choose treatment/outcome in Controls and run inference.
 
 Important behavior:
 
@@ -97,6 +99,29 @@ Important behavior:
 - The `Reset` button clears canvas and analysis results, while keeping the uploaded dataset/variables loaded.
 - Node positions are persisted with the saved graph and restored on reload.
 - Multi-select is supported with box selection, and the Canvas Details panel shows the current selection state.
+
+## VS Code Shell Quickstart
+
+Use two integrated terminals:
+
+Terminal 1 (backend):
+
+```powershell
+Set-Location "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject"
+..\..\.venv\Scripts\Activate.ps1
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000
+```
+
+Terminal 2 (frontend):
+
+```powershell
+Set-Location "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causal-frontend"
+npm run dev
+```
+
+Frontend: `http://localhost:5173`.
+Backend: `http://127.0.0.1:8000`.
 
 ## Data Preprocessing (Backend)
 

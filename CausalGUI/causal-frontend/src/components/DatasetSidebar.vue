@@ -1,6 +1,6 @@
 <template>
   <aside class="sidebar">
-    <h2 class="sidebar-title">📊 Dataset</h2>
+    <h2 class="sidebar-title">Dataset</h2>
     <p class="sidebar-note">Upload a CSV and drag variables into the graph.</p>
     <input class="file-input" type="file" accept=".csv" @change="onFileChange" />
 
@@ -11,7 +11,7 @@
 
     <div v-if="previewHeaders.length" class="preview-wrap">
       <div class="section-header preview-header">
-        <h3>🧪 Preview</h3>
+        <h3>Preview</h3>
         <span class="variable-count">{{ previewRows.length }}</span>
       </div>
       <div class="preview-table-wrap">
@@ -33,7 +33,7 @@
     </div>
 
     <div class="section-header">
-      <h3>📌 Variables</h3>
+      <h3>Variables</h3>
       <span class="variable-count">{{ variables.length }}</span>
     </div>
     <ul v-if="variables.length" class="variables-list">
@@ -90,7 +90,7 @@ const previewHeaders = computed(() => {
 
 function normalizeCellValue(value) {
   if (value === null || value === undefined || value === "") {
-    return "—"
+    return "--"
   }
   return String(value)
 }

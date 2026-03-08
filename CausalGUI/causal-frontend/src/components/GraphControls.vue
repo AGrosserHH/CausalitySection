@@ -1,6 +1,6 @@
 <template>
   <div class="controls-panel">
-    <h3>🎛️ Controls</h3>
+    <h3>Controls</h3>
 
     <label class="control-label">
       Treatment:
@@ -30,18 +30,18 @@
     </label>
 
     <div class="button-grid">
-      <button class="btn btn-save" type="button" @click="$emit('save')">💾 Save Graph</button>
-      <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Draft + Verify</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('relayout')">🧭 Auto Layout</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('delete-selected')">🗑️ Delete Selected</button>
-      <button class="btn btn-secondary" type="button" :disabled="!canUndo" @click="$emit('undo')">↶ Undo</button>
-      <button class="btn btn-secondary" type="button" :disabled="!canRedo" @click="$emit('redo')">↷ Redo</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-in')">＋ Zoom In</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-out')">－ Zoom Out</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('fit')">⤢ Fit</button>
-      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('center')">◎ Center</button>
-      <button class="btn btn-run" type="button" @click="$emit('run')">🔍 Run Inference</button>
-      <button class="btn btn-reset" type="button" @click="$emit('reset')">♻️ Reset</button>
+      <button class="btn btn-save" type="button" @click="$emit('save')">Save Graph</button>
+      <button class="btn btn-ai" type="button" @click="$emit('suggest')">AI Draft + Verify</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('relayout')">Auto Layout</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('delete-selected')">Delete Selected</button>
+      <button class="btn btn-secondary" type="button" :disabled="!canUndo" @click="$emit('undo')">Undo</button>
+      <button class="btn btn-secondary" type="button" :disabled="!canRedo" @click="$emit('redo')">Redo</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-in')">Zoom In</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-out')">Zoom Out</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('fit')">Fit</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('center')">Center</button>
+      <button class="btn btn-run" type="button" @click="$emit('run')">Run Inference</button>
+      <button class="btn btn-reset" type="button" @click="$emit('reset')">Reset</button>
     </div>
   </div>
 </template>

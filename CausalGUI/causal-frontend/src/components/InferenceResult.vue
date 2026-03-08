@@ -1,7 +1,7 @@
 <template>
   <section v-if="hasResult" class="inference-result">
     <header class="result-header">
-      <h3>📊 Inference Result</h3>
+      <h3>Inference Result</h3>
       <span class="result-pill">Completed</span>
     </header>
 
@@ -32,7 +32,7 @@
     </div>
 
     <div v-if="causalGraphImageUrl" class="graph-wrap">
-      <h4>📈 Causal Graph</h4>
+      <h4>Causal Graph</h4>
       <img :src="causalGraphImageUrl" alt="Causal Graph" class="graph-image" />
     </div>
 
@@ -86,13 +86,13 @@ const methodLabel = computed(() => {
   }
 
   const labels = {
-    "backdoor.linear_regression": "Backdoor · Linear Regression",
-    "backdoor.propensity_score_matching": "Backdoor · Propensity Score Matching",
-    "backdoor.propensity_score_weighting": "Backdoor · Propensity Score Weighting",
-    "backdoor.doubly_robust_estimator": "Backdoor · Doubly Robust",
+    "backdoor.linear_regression": "Backdoor | Linear Regression",
+    "backdoor.propensity_score_matching": "Backdoor | Propensity Score Matching",
+    "backdoor.propensity_score_weighting": "Backdoor | Propensity Score Weighting",
+    "backdoor.doubly_robust_estimator": "Backdoor | Doubly Robust",
     "iv.instrumental_variable": "Instrumental Variable",
-    "frontdoor.two_stage_regression": "Frontdoor · Two-Stage Regression",
-    "backdoor.diff_in_means_fallback": "Fallback · Difference in Means",
+    "frontdoor.two_stage_regression": "Frontdoor | Two-Stage Regression",
+    "backdoor.diff_in_means_fallback": "Fallback | Difference in Means",
   }
 
   return labels[method] || method

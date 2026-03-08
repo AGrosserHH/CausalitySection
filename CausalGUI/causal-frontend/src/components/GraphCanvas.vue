@@ -123,7 +123,7 @@ function buildEdgeLabel(status, manualLock) {
   if (manualLock) {
     parts.push("locked")
   }
-  return parts.join(" · ")
+  return parts.join(" | ")
 }
 
 function applyEdgeClass(edgeElement) {

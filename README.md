@@ -12,6 +12,8 @@ This repository contains experiments and a working prototype GUI for causal infe
 - App setup, backend/frontend runbook, and API feature notes: `CausalGUI/README.md`
 - Notebook-focused dependencies and experiments: `CausalModels/requirements.txt`
 
+Recent UX and backend behavior updates (manual node creation after upload, reset behavior, preprocessing, and troubleshooting) are documented in `CausalGUI/README.md`.
+
 ## Root Shortcuts
 
 From repository root, these scripts proxy to the frontend workspace:

@@ -9,9 +9,21 @@ class EdgeInputSerializer(serializers.Serializer):
     evidence = serializers.ListField(child=serializers.DictField(), required=False, default=list)
 
 
+class NodePositionSerializer(serializers.Serializer):
+    x = serializers.FloatField()
+    y = serializers.FloatField()
+
+
+class GraphNodeInputSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(max_length=100)
+    position = NodePositionSerializer(required=False, allow_null=True)
+
+
 class SaveGraphRequestSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField(required=False)
     name = serializers.CharField(required=False, allow_blank=True, default="Unnamed Graph")
+    nodes = GraphNodeInputSerializer(many=True, required=False, default=list)
     edges = EdgeInputSerializer(many=True, required=False, default=list)
 
 
@@ -82,8 +94,15 @@ class GraphEdgeDetailSerializer(serializers.Serializer):
     evidence = EdgeEvidenceSerializer(many=True)
 
 
+class GraphNodeDetailSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    position = NodePositionSerializer(required=False, allow_null=True)
+
+
 class GraphDetailsResponseSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField()
+    nodes = GraphNodeDetailSerializer(many=True, required=False, default=list)
     edges = GraphEdgeDetailSerializer(many=True)
 
 

@@ -76,6 +76,36 @@ class CausalApiTests(APITestCase):
 			CausalEdge.objects.filter(graph_id=graph_id, source__name="A", target__name="B").count(),
 			1,
 		)
+		self.assertEqual(CausalGraph.objects.get(id=graph_id).node_positions, {})
+
+	def test_save_graph_persists_node_positions_and_graph_details_returns_nodes(self):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+
+		save_response = self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Position Graph",
+				"nodes": [
+					{"id": response_data["variables"][0]["id"], "name": "A", "position": {"x": 120.5, "y": 88.25}},
+					{"id": response_data["variables"][1]["id"], "name": "B", "position": {"x": 320.0, "y": 180.0}},
+				],
+				"edges": [{"source": "A", "target": "B", "directed": True}],
+			},
+			format="json",
+		)
+
+		self.assertEqual(save_response.status_code, status.HTTP_200_OK)
+		graph = CausalGraph.objects.get(id=graph_id)
+		self.assertEqual(graph.node_positions["A"], {"x": 120.5, "y": 88.25})
+
+		response = self.client.get(f"/api/graphs/{graph_id}/")
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response.data["nodes"]), 2)
+		nodes_by_name = {item["name"]: item for item in response.data["nodes"]}
+		self.assertEqual(nodes_by_name["A"]["position"], {"x": 120.5, "y": 88.25})
+		self.assertEqual(nodes_by_name["B"]["position"], {"x": 320.0, "y": 180.0})
 
 	def test_causal_inference_requires_params(self):
 		response = self.client.post("/api/causal_inference/", {}, format="json")

@@ -29,10 +29,20 @@
       </select>
     </label>
 
-    <button class="btn btn-save" type="button" @click="$emit('save')">💾 Save Graph</button>
-    <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Draft + Verify</button>
-    <button class="btn btn-run" type="button" @click="$emit('run')">🔍 Run Inference</button>
-    <button class="btn btn-reset" type="button" @click="$emit('reset')">♻️ Reset</button>
+    <div class="button-grid">
+      <button class="btn btn-save" type="button" @click="$emit('save')">💾 Save Graph</button>
+      <button class="btn btn-ai" type="button" @click="$emit('suggest')">✨ AI Draft + Verify</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('relayout')">🧭 Auto Layout</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('delete-selected')">🗑️ Delete Selected</button>
+      <button class="btn btn-secondary" type="button" :disabled="!canUndo" @click="$emit('undo')">↶ Undo</button>
+      <button class="btn btn-secondary" type="button" :disabled="!canRedo" @click="$emit('redo')">↷ Redo</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-in')">＋ Zoom In</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('zoom-out')">－ Zoom Out</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('fit')">⤢ Fit</button>
+      <button class="btn btn-secondary" type="button" :disabled="!hasGraph" @click="$emit('center')">◎ Center</button>
+      <button class="btn btn-run" type="button" @click="$emit('run')">🔍 Run Inference</button>
+      <button class="btn btn-reset" type="button" @click="$emit('reset')">♻️ Reset</button>
+    </div>
   </div>
 </template>
 
@@ -54,6 +64,18 @@ defineProps({
     type: String,
     default: "",
   },
+  hasGraph: {
+    type: Boolean,
+    default: false,
+  },
+  canUndo: {
+    type: Boolean,
+    default: false,
+  },
+  canRedo: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits([
@@ -62,6 +84,14 @@ const emit = defineEmits([
   "update:selectedMethod",
   "save",
   "suggest",
+  "relayout",
+  "delete-selected",
+  "undo",
+  "redo",
+  "zoom-in",
+  "zoom-out",
+  "fit",
+  "center",
   "run",
   "reset",
 ])
@@ -128,13 +158,23 @@ function onMethodChange(event) {
 }
 
 .btn {
-  width: 100%;
   padding: 9px;
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .btn-save {
@@ -153,9 +193,17 @@ function onMethodChange(event) {
   background: #6b7280;
 }
 
+.btn-secondary {
+  background: #334155;
+}
+
 @media (max-width: 768px) {
   .controls-panel {
     position: static;
+  }
+
+  .button-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

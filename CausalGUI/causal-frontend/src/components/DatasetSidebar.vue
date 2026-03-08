@@ -42,7 +42,7 @@
         :key="item.id"
         class="variable-item"
         draggable="true"
-        @dragstart="onDragStart(item.name, $event)"
+        @dragstart="onDragStart(item, $event)"
       >
         {{ item.name }}
       </li>
@@ -77,7 +77,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(["file-upload", "drag-start"])
+const emit = defineEmits(["file-upload"])
 
 const previewHeaders = computed(() => {
   const firstRow = props.previewRows?.[0]
@@ -105,8 +105,16 @@ function onFileChange(event) {
   event.target.value = ""
 }
 
-function onDragStart(variableName, event) {
-  emit("drag-start", variableName, event)
+function onDragStart(variable, event) {
+  event.dataTransfer.setData(
+    "application/json",
+    JSON.stringify({
+      id: variable.id,
+      name: variable.name,
+    }),
+  )
+  event.dataTransfer.setData("text/plain", variable.name)
+  event.dataTransfer.effectAllowed = "copy"
 }
 </script>
 

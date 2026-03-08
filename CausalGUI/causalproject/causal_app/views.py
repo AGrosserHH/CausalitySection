@@ -116,13 +116,13 @@ def save_graph(request):
 
     graph_id = serializer.validated_data.get("graph_id")
     name = serializer.validated_data.get("name", "Unnamed Graph")
+    nodes = serializer.validated_data.get("nodes", [])
     edges = serializer.validated_data.get("edges", [])
 
     if graph_id:
         try:
             graph = CausalGraph.objects.get(id=graph_id)
             graph.name = name
-            graph.save(update_fields=["name"])
         except CausalGraph.DoesNotExist:
             return Response({"error": "Graph not found."}, status=404)
     else:
@@ -130,6 +130,27 @@ def save_graph(request):
 
     try:
         with transaction.atomic():
+            valid_variable_names = set(graph.variables.values_list("name", flat=True))
+            node_positions = {}
+            for node in nodes:
+                node_name = node["name"]
+                if node_name not in valid_variable_names:
+                    return Response(
+                        {"error": f"Variable '{node_name}' not found in this graph."},
+                        status=400,
+                    )
+
+                position = node.get("position")
+                if position:
+                    node_positions[node_name] = {
+                        "x": float(position["x"]),
+                        "y": float(position["y"]),
+                    }
+
+            graph.name = name
+            graph.node_positions = node_positions
+            graph.save(update_fields=["name", "node_positions"])
+
             graph.edges.all().delete()
 
             for edge in edges:
@@ -423,8 +444,13 @@ def graph_details(request, graph_id: int):
     except CausalGraph.DoesNotExist:
         return Response({"error": "Graph not found."}, status=404)
 
+    variable_map = {variable.name: variable for variable in graph.variables.all()}
+    stored_positions = graph.node_positions or {}
     edge_payloads = []
+    referenced_names = set(stored_positions.keys())
     for edge in graph.edges.select_related("source", "target").prefetch_related("evidences").all():
+        referenced_names.add(edge.source.name)
+        referenced_names.add(edge.target.name)
         evidence_items = [
             {
                 "evidence_type": evidence.evidence_type,
@@ -445,9 +471,24 @@ def graph_details(request, graph_id: int):
             }
         )
 
+    node_payloads = []
+    for variable_name in sorted(referenced_names):
+        variable = variable_map.get(variable_name)
+        if not variable:
+            continue
+
+        node_payloads.append(
+            {
+                "id": variable.id,
+                "name": variable.name,
+                "position": stored_positions.get(variable.name),
+            }
+        )
+
     response_serializer = GraphDetailsResponseSerializer(
         data={
             "graph_id": graph.id,
+            "nodes": node_payloads,
             "edges": edge_payloads,
         }
     )

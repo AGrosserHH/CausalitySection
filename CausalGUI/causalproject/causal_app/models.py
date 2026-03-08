@@ -5,6 +5,7 @@ class CausalGraph(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)    
     image_path = models.CharField(max_length=255, blank=True, null=True)
     data_file = models.FileField(upload_to='datasets/', null=True, blank=True)
+    node_positions = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return self.name

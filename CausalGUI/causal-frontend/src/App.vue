@@ -6,7 +6,6 @@
       :graph-id="graphId"
       :preview-rows="datasetPreviewRows"
       @file-upload="handleFileUpload"
-      @drag-start="onDragStart"
     />
 
     <main class="main-content">
@@ -23,7 +22,7 @@
         <div class="graph-panel">
           <div class="graph-toolbar">
             <span class="toolbar-title">Graph Canvas</span>
-            <span class="toolbar-hint">Drag variables from the sidebar and right-drag to connect nodes.</span>
+            <span class="toolbar-hint">Drag variables in, drag from a node handle or right-drag between nodes to connect, shift-drag to box-select, and use Delete, Undo, or Zoom controls as needed.</span>
           </div>
           <div class="legend-row">
             <div class="legend-group">
@@ -40,7 +39,14 @@
               <span class="legend-chip legend-manual"><span aria-hidden="true">🔒</span> <span class="sr-only">Edge status:</span>manual lock</span>
             </div>
           </div>
-          <div ref="cyContainer" class="graph-canvas" @dragover.prevent @drop="onDrop"></div>
+          <GraphCanvas
+            ref="graphCanvasRef"
+            class="graph-canvas-host"
+            :variables="variables"
+            :snapshot-key="graphCanvasSnapshotKey"
+            @graph-change="handleGraphChange"
+            @selection-change="handleGraphSelection"
+          />
         </div>
 
         <GraphControls
@@ -49,14 +55,55 @@
           :selected-treatment="selectedTreatment"
           :selected-outcome="selectedOutcome"
           :selected-method="selectedMethod"
+          :has-graph="graphCanvasState.nodeCount > 0"
+          :can-undo="graphCanvasState.canUndo"
+          :can-redo="graphCanvasState.canRedo"
           @update:selected-treatment="selectedTreatment = $event"
           @update:selected-outcome="selectedOutcome = $event"
           @update:selected-method="selectedMethod = $event"
           @save="saveGraph"
           @suggest="suggestGraphEdges"
+          @relayout="relayoutGraph"
+          @delete-selected="deleteSelectedGraphElements"
+          @undo="undoGraphEdit"
+          @redo="redoGraphEdit"
+          @zoom-in="zoomInGraph"
+          @zoom-out="zoomOutGraph"
+          @fit="fitGraphToView"
+          @center="centerGraphInView"
           @run="computeInference"
           @reset="resetAnalysisWorkspace"
         />
+      </section>
+
+      <section v-if="selectedGraphElement || graphCanvasState.nodeCount" class="selection-panel">
+        <div class="assessment-header">
+          <h3 class="assessment-title">Canvas Details</h3>
+          <span class="legend-label">
+            {{ graphCanvasState.nodeCount }} node{{ graphCanvasState.nodeCount === 1 ? "" : "s" }} · {{ graphCanvasState.edgeCount }} edge{{ graphCanvasState.edgeCount === 1 ? "" : "s" }}
+          </span>
+        </div>
+
+        <template v-if="selectedGraphElement?.type === 'node'">
+          <p class="assessment-line"><strong>Node:</strong> {{ selectedGraphElement.label }}</p>
+          <p class="assessment-line"><strong>Variable ID:</strong> {{ selectedGraphElement.variableId ?? "n/a" }}</p>
+          <p class="assessment-line"><strong>Position:</strong> {{ selectedGraphElement.position.x }}, {{ selectedGraphElement.position.y }}</p>
+        </template>
+
+        <template v-else-if="selectedGraphElement?.type === 'edge'">
+          <p class="assessment-line"><strong>Edge:</strong> {{ selectedGraphElement.source }} → {{ selectedGraphElement.target }}</p>
+          <p class="assessment-line"><strong>Status:</strong> {{ selectedGraphElement.status }}</p>
+          <p class="assessment-line"><strong>Manual lock:</strong> {{ selectedGraphElement.manualLock ? "yes" : "no" }}</p>
+          <p class="assessment-line"><strong>Evidence count:</strong> {{ selectedGraphElement.evidenceCount }}</p>
+        </template>
+
+        <template v-else-if="selectedGraphElement?.type === 'multi'">
+          <p class="assessment-line"><strong>Selection:</strong> {{ selectedGraphElement.count }} element{{ selectedGraphElement.count === 1 ? "" : "s" }}</p>
+          <p class="assessment-line"><strong>Nodes:</strong> {{ selectedGraphElement.nodeCount }}</p>
+          <p class="assessment-line"><strong>Edges:</strong> {{ selectedGraphElement.edgeCount }}</p>
+        </template>
+
+        <p v-else class="assessment-line">No active selection. Use click or shift-drag on the canvas to inspect nodes and edges.</p>
       </section>
 
       <InferenceResult
@@ -73,7 +120,7 @@
           </span>
         </div>
 
-        <ul class="assessment-reasons" v-if="assessmentResult.reasons?.length">
+        <ul v-if="assessmentResult.reasons?.length" class="assessment-reasons">
           <li v-for="reason in assessmentResult.reasons" :key="reason">{{ reason }}</li>
         </ul>
 
@@ -84,7 +131,7 @@
           {{ assessmentResult.overlap_ok ? "ok" : "check warnings" }}
         </p>
 
-        <ul class="assessment-warnings" v-if="assessmentResult.overlap_warnings?.length">
+        <ul v-if="assessmentResult.overlap_warnings?.length" class="assessment-warnings">
           <li v-for="warning in assessmentResult.overlap_warnings" :key="warning">{{ warning }}</li>
         </ul>
 
@@ -211,7 +258,7 @@
         </div>
 
         <div class="robust-grid">
-          <div class="assessment-card" v-if="whatIfResult">
+          <div v-if="whatIfResult" class="assessment-card">
             <h4>What-if result</h4>
             <p>Baseline outcome mean: {{ whatIfResult.baseline_outcome_mean }}</p>
             <p>Baseline treatment mean: {{ whatIfResult.baseline_treatment_mean }}</p>
@@ -220,7 +267,7 @@
             <p>{{ whatIfResult.note }}</p>
           </div>
 
-          <div class="assessment-card" v-if="rootCauseResult">
+          <div v-if="rootCauseResult" class="assessment-card">
             <h4>Anomaly attribution</h4>
             <ul>
               <li v-for="item in rootCauseResult.anomaly_attribution" :key="`an-${item.variable}`">
@@ -229,7 +276,7 @@
             </ul>
           </div>
 
-          <div class="assessment-card" v-if="rootCauseResult">
+          <div v-if="rootCauseResult" class="assessment-card">
             <h4>Distribution-change attribution</h4>
             <ul>
               <li v-for="item in rootCauseResult.distribution_change_attribution" :key="`dc-${item.variable}`">
@@ -254,11 +301,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from "vue"
+import { computed, onUnmounted, ref, watch } from "vue"
 
 import DatasetSidebar from "./components/DatasetSidebar.vue"
+import GraphCanvas from "./components/GraphCanvas.vue"
 import GraphControls from "./components/GraphControls.vue"
 import InferenceResult from "./components/InferenceResult.vue"
+import { createGraphStateSignature } from "./composables/useGraphCanvas"
 import { useCausalApi } from "./composables/useCausalApi"
 
 const {
@@ -296,10 +345,24 @@ const whatIfResult = ref(null)
 const rootCauseResult = ref(null)
 const ENABLE_INFERENCE_DEBUG = import.meta.env.DEV
 
-const cyContainer = ref(null)
-const cy = ref(null)
-const startNode = ref(null)
-const endNode = ref(null)
+const graphCanvasRef = ref(null)
+const graphRevision = ref(0)
+const lastPersistedGraph = ref({ graphId: null, signature: "" })
+const graphCanvasState = ref({ nodeCount: 0, edgeCount: 0, canUndo: false, canRedo: false })
+const selectedGraphElement = ref(null)
+
+let assessmentTimerId = null
+let assessmentRequestToken = 0
+
+const graphCanvasSnapshotKey = computed(() => {
+  if (graphId.value) {
+    return `graph-${graphId.value}`
+  }
+  if (datasetName.value) {
+    return `dataset-${datasetName.value}`
+  }
+  return "graph-editor"
+})
 
 function setStatus(message, type = "success") {
   statusMessage.value = message
@@ -310,222 +373,29 @@ function clearStatus() {
   statusMessage.value = ""
 }
 
-async function initializeGraph() {
-  if (!cyContainer.value) {
-    return
+function handleGraphChange(payload = {}) {
+  graphCanvasState.value = {
+    nodeCount: payload.nodeCount || 0,
+    edgeCount: payload.edgeCount || 0,
+    canUndo: Boolean(payload.canUndo),
+    canRedo: Boolean(payload.canRedo),
   }
-
-  const cytoscape = (await import("cytoscape")).default
-
-  cy.value = cytoscape({
-    container: cyContainer.value,
-    elements: [],
-    style: [
-      {
-        selector: "node",
-        style: {
-          label: "data(label)",
-          "background-color": "#66B",
-        },
-      },
-      {
-        selector: "edge",
-        style: {
-          width: 2,
-          "line-color": "#888",
-          "target-arrow-color": "#888",
-          "target-arrow-shape": "triangle",
-          "curve-style": "bezier",
-        },
-      },
-      {
-        selector: "edge.status-supported",
-        style: {
-          "line-color": "#10b981",
-          "target-arrow-color": "#10b981",
-        },
-      },
-      {
-        selector: "edge.status-weak",
-        style: {
-          "line-color": "#f59e0b",
-          "target-arrow-color": "#f59e0b",
-        },
-      },
-      {
-        selector: "edge.status-conflict",
-        style: {
-          "line-color": "#ef4444",
-          "target-arrow-color": "#ef4444",
-        },
-      },
-      {
-        selector: "edge.manual-lock",
-        style: {
-          width: 4,
-        },
-      },
-    ],
-    layout: { name: "grid" },
-  })
-
-  cy.value.on("cxttapstart", "node", (event) => {
-    startNode.value = event.target
-    endNode.value = null
-    event.originalEvent.preventDefault()
-  })
-
-  cy.value.on("cxtdragover", "node", (event) => {
-    if (startNode.value) {
-      endNode.value = event.target
-    }
-  })
-
-  cy.value.on("cxttapend", () => {
-    if (startNode.value && endNode.value && startNode.value !== endNode.value) {
-      cy.value.add({
-        group: "edges",
-        data: {
-          source: startNode.value.id(),
-          target: endNode.value.id(),
-        },
-      })
-    }
-    startNode.value = null
-    endNode.value = null
-  })
-
-  cy.value.on("tap", "edge", (event) => event.target.remove())
-  cy.value.on("tap", "node", (event) => event.target.remove())
+  graphRevision.value += 1
 }
 
-function onDragStart(variableName, event) {
-  event.dataTransfer.setData("text/plain", variableName)
-  event.dataTransfer.dropEffect = "copy"
-}
-
-function onDrop(event) {
-  const variableName = event.dataTransfer.getData("text/plain")
-  if (!variableName || !cy.value) {
-    return
-  }
-
-  const rect = cyContainer.value.getBoundingClientRect()
-  const x = event.clientX - rect.left
-  const y = event.clientY - rect.top
-
-  if (cy.value.getElementById(variableName).length === 0) {
-    cy.value.add({
-      group: "nodes",
-      data: {
-        id: variableName,
-        label: variableName,
-      },
-      position: { x, y },
-    })
-  }
-}
-
-function ensureNodeOnCanvas(variableName, index, total) {
-  if (!cy.value || !cyContainer.value || cy.value.getElementById(variableName).length > 0) {
-    return
-  }
-
-  const width = cyContainer.value.clientWidth || 600
-  const height = cyContainer.value.clientHeight || 420
-  const radius = Math.max(120, Math.min(width, height) * 0.35)
-  const angle = (2 * Math.PI * index) / Math.max(total, 1)
-
-  cy.value.add({
-    group: "nodes",
-    data: {
-      id: variableName,
-      label: variableName,
-    },
-    position: {
-      x: width / 2 + Math.cos(angle) * radius,
-      y: height / 2 + Math.sin(angle) * radius,
-    },
-  })
-}
-
-function addSuggestedEdgesToGraph(edges) {
-  if (!cy.value || !Array.isArray(edges)) {
-    return 0
-  }
-
-  let addedCount = 0
-
-  edges.forEach((edge, index) => {
-    const source = edge?.source
-    const target = edge?.target
-
-    if (!source || !target || source === target) {
-      return
-    }
-
-    ensureNodeOnCanvas(source, index * 2, edges.length * 2)
-    ensureNodeOnCanvas(target, index * 2 + 1, edges.length * 2)
-
-    const status = edge?.verification_status || edge?.status || ""
-    const manualLock = Boolean(edge?.manual_lock)
-    const evidence = Array.isArray(edge?.evidence) ? edge.evidence : []
-
-    const existing = cy.value
-      .edges()
-      .toArray()
-      .find((existingEdge) => {
-        return existingEdge.data("source") === source && existingEdge.data("target") === target
-      })
-
-    if (existing) {
-      existing.data("status", status)
-      existing.data("manual_lock", manualLock)
-      existing.data("evidence", evidence)
-      applyEdgeClass(existing)
-      return
-    }
-
-    const created = cy.value.add({
-      group: "edges",
-      data: {
-        source,
-        target,
-        status,
-        manual_lock: manualLock,
-        evidence,
-      },
-    })
-    applyEdgeClass(created)
-    addedCount += 1
-  })
-
-  return addedCount
-}
-
-function applyEdgeClass(edgeElement) {
-  edgeElement.removeClass("status-supported status-weak status-conflict manual-lock")
-  const status = edgeElement.data("status")
-  if (status === "supported") {
-    edgeElement.addClass("status-supported")
-  } else if (status === "weak") {
-    edgeElement.addClass("status-weak")
-  } else if (status === "conflict" || status === "rejected") {
-    edgeElement.addClass("status-conflict")
-  }
-  if (edgeElement.data("manual_lock")) {
-    edgeElement.addClass("manual-lock")
-  }
+function handleGraphSelection(payload) {
+  selectedGraphElement.value = payload
 }
 
 async function refreshGraphDetails() {
-  if (!graphId.value) {
+  if (!graphId.value || !graphCanvasRef.value) {
     return
   }
 
   const details = await fetchGraphDetails(graphId.value)
+  const detailNodes = Array.isArray(details?.nodes) ? details.nodes : []
   const detailEdges = Array.isArray(details?.edges) ? details.edges : []
-  addSuggestedEdgesToGraph(detailEdges)
+  graphCanvasRef.value.syncGraph({ nodes: detailNodes, edges: detailEdges })
 
   edgeEvidenceList.value = detailEdges.map((edge) => ({
     key: `${edge.source}:${edge.target}`,
@@ -537,36 +407,23 @@ async function refreshGraphDetails() {
 }
 
 function relayoutGraph() {
-  if (!cy.value) {
-    return
-  }
-
-  cy.value
-    .layout({
-      name: "cose",
-      animate: false,
-      fit: true,
-      padding: 30,
-    })
-    .run()
+  graphCanvasRef.value?.relayoutGraph()
 }
 
 function getCanvasEdges() {
-  if (!cy.value) {
-    return []
-  }
+  return graphCanvasRef.value?.serializeGraph().edges || []
+}
 
-  return cy.value.edges().toArray().map((edge) => ({
-      source: edge.data("source"),
-      target: edge.data("target"),
-      directed: true,
-      manual_lock: Boolean(edge.data("manual_lock")),
-      evidence: Array.isArray(edge.data("evidence")) ? edge.data("evidence") : [],
-    }))
+function getCanvasNodes() {
+  return graphCanvasRef.value?.serializeGraph().nodes || []
 }
 
 function hasCanvasEdges() {
-  return getCanvasEdges().length > 0
+  return graphCanvasRef.value?.hasEdges() || false
+}
+
+function getCanvasNodeCount() {
+  return graphCanvasRef.value?.getNodeCount() || 0
 }
 
 async function persistGraphEdges(showSuccessStatus = false) {
@@ -576,18 +433,36 @@ async function persistGraphEdges(showSuccessStatus = false) {
   }
 
   const edges = getCanvasEdges()
+  const nodes = getCanvasNodes()
   if (!edges.length) {
     setStatus("Add at least one edge before running analysis.", "error")
     return false
+  }
+
+  const signature = createGraphStateSignature({ nodes, edges })
+  if (lastPersistedGraph.value.graphId === graphId.value && lastPersistedGraph.value.signature === signature) {
+    if (showSuccessStatus) {
+      setStatus(`Graph ${graphId.value} is already up to date.`)
+    }
+    return true
   }
 
   try {
     const responseData = await saveGraphApi({
       graph_id: graphId.value,
       name: "UserGraph",
+      nodes: nodes.map((node) => ({
+        id: node.variableId,
+        name: node.variableName,
+        position: node.position,
+      })),
       edges,
     })
     graphId.value = responseData.graph_id
+    lastPersistedGraph.value = {
+      graphId: responseData.graph_id,
+      signature,
+    }
     await refreshGraphDetails()
     if (showSuccessStatus) {
       setStatus(`Graph saved with ID ${graphId.value}.`)
@@ -600,14 +475,9 @@ async function persistGraphEdges(showSuccessStatus = false) {
 }
 
 async function resetGraphCanvas() {
-  if (cy.value) {
-    cy.value.destroy()
-    cy.value = null
-  }
-
-  startNode.value = null
-  endNode.value = null
-  await initializeGraph()
+  graphCanvasRef.value?.resetGraph()
+  lastPersistedGraph.value = { graphId: graphId.value, signature: "" }
+  selectedGraphElement.value = null
 }
 
 async function handleFileUpload(file) {
@@ -636,6 +506,8 @@ async function handleFileUpload(file) {
     whatIfResult.value = null
     rootCauseResult.value = null
     await resetGraphCanvas()
+    graphRevision.value += 1
+    graphCanvasState.value = { nodeCount: 0, edgeCount: 0, canUndo: false, canRedo: false }
     setStatus(
       `Dataset connected: ${datasetName.value}. ${variables.value.length} column${variables.value.length === 1 ? "" : "s"} loaded; drag variables to add nodes to the graph.`,
     )
@@ -688,7 +560,11 @@ async function suggestGraphEdges() {
       })
     }
 
-    const addedCount = addSuggestedEdgesToGraph(responseData.edges)
+    const shouldRelayout = getCanvasNodeCount() === 0
+    const { addedCount, nodeAddedCount } = graphCanvasRef.value?.addSuggestedEdges(responseData.edges) || {
+      addedCount: 0,
+      nodeAddedCount: 0,
+    }
     edgeEvidenceList.value = (responseData.edges || []).map((edge) => ({
       key: `${edge.source}:${edge.target}`,
       source: edge.source,
@@ -697,7 +573,9 @@ async function suggestGraphEdges() {
       evidenceCount: Array.isArray(edge.evidence) ? edge.evidence.length : 0,
     }))
     if (addedCount > 0) {
-      relayoutGraph()
+      if (shouldRelayout && nodeAddedCount > 1) {
+        relayoutGraph()
+      }
       setStatus(`Added ${addedCount} AI-suggested edge${addedCount === 1 ? "" : "s"}.`)
       return
     }
@@ -713,20 +591,20 @@ function canRunAssessment() {
     Boolean(graphId.value) &&
     Boolean(selectedTreatment.value) &&
     Boolean(selectedOutcome.value) &&
-    Boolean(cy.value) &&
-    cy.value.nodes().length >= 2 &&
+    getCanvasNodeCount() >= 2 &&
     hasCanvasEdges()
   )
 }
 
 async function refreshAssessment(showErrors = false) {
+  const requestToken = ++assessmentRequestToken
   if (!canRunAssessment()) {
     assessmentResult.value = null
     return null
   }
 
   const saved = await persistGraphEdges(false)
-  if (!saved) {
+  if (!saved || requestToken !== assessmentRequestToken) {
     assessmentResult.value = null
     return null
   }
@@ -738,15 +616,67 @@ async function refreshAssessment(showErrors = false) {
       outcome: selectedOutcome.value,
       estimand: "ATE",
     })
+    if (requestToken !== assessmentRequestToken) {
+      return null
+    }
     assessmentResult.value = assessment
     return assessment
   } catch (error) {
+    if (requestToken !== assessmentRequestToken) {
+      return null
+    }
     assessmentResult.value = null
     if (showErrors) {
       setStatus(getErrorMessage(error, "Assessment failed."), "error")
     }
     return null
   }
+}
+
+function scheduleAssessmentRefresh() {
+  if (assessmentTimerId) {
+    window.clearTimeout(assessmentTimerId)
+  }
+
+  assessmentTimerId = window.setTimeout(() => {
+    void refreshAssessment(false)
+  }, 300)
+}
+
+function deleteSelectedGraphElements() {
+  const removedCount = graphCanvasRef.value?.removeSelectedElements() || 0
+  if (removedCount > 0) {
+    setStatus(`Removed ${removedCount} selected element${removedCount === 1 ? "" : "s"}.`)
+    lastPersistedGraph.value = { graphId: graphId.value, signature: "" }
+  }
+}
+
+function undoGraphEdit() {
+  if (graphCanvasRef.value?.undo()) {
+    lastPersistedGraph.value = { graphId: graphId.value, signature: "" }
+  }
+}
+
+function redoGraphEdit() {
+  if (graphCanvasRef.value?.redo()) {
+    lastPersistedGraph.value = { graphId: graphId.value, signature: "" }
+  }
+}
+
+function zoomInGraph() {
+  graphCanvasRef.value?.zoomIn()
+}
+
+function zoomOutGraph() {
+  graphCanvasRef.value?.zoomOut()
+}
+
+function fitGraphToView() {
+  graphCanvasRef.value?.fitGraph()
+}
+
+function centerGraphInView() {
+  graphCanvasRef.value?.centerGraph()
 }
 
 async function runRobustness() {
@@ -977,7 +907,7 @@ async function computeInference() {
     return
   }
 
-  if (cy.value.nodes().length < 2) {
+  if (getCanvasNodeCount() < 2) {
     setStatus("At least two nodes are required.", "error")
     console.warn("[analysis] Inference blocked: fewer than 2 nodes on canvas")
     return
@@ -1034,17 +964,14 @@ async function computeInference() {
     setStatus(getErrorMessage(error, "Causal inference failed."), "error")
   }
 }
-
-onMounted(async () => {
-  try {
-    await initializeGraph()
-  } catch {
-    setStatus("Failed to initialize graph editor.", "error")
+onUnmounted(() => {
+  if (assessmentTimerId) {
+    window.clearTimeout(assessmentTimerId)
   }
 })
 
-watch([graphId, selectedTreatment, selectedOutcome], () => {
-  void refreshAssessment(false)
+watch([graphId, selectedTreatment, selectedOutcome, graphRevision], () => {
+  scheduleAssessmentRefresh()
 })
 </script>
 
@@ -1204,12 +1131,10 @@ watch([graphId, selectedTreatment, selectedOutcome], () => {
   border-width: 2px;
 }
 
-.graph-canvas {
+.graph-canvas-host {
   flex: 1;
   min-height: 420px;
-  border: 2px dashed #d1d5db;
-  border-radius: 6px;
-  background: var(--color-background);
+  min-width: 0;
 }
 
 .controls-column {
@@ -1217,6 +1142,16 @@ watch([graphId, selectedTreatment, selectedOutcome], () => {
 }
 
 .assessment-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selection-panel {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-background);
@@ -1401,7 +1336,7 @@ watch([graphId, selectedTreatment, selectedOutcome], () => {
     flex: 1 1 auto;
   }
 
-  .graph-canvas {
+  .graph-canvas-host {
     min-height: 360px;
   }
 

@@ -87,13 +87,16 @@ npm run build
 
 1. Upload CSV from the Dataset sidebar.
 2. Select variables from the sidebar and drag them onto the canvas as nodes.
-3. Create directed edges by right-dragging between nodes.
-4. Choose treatment/outcome in Controls and run inference.
+3. Create directed edges by dragging from a node handle to another node.
+4. Use the Controls panel for auto-layout, delete selected, undo/redo, and zoom/fit/center actions.
+5. Choose treatment/outcome in Controls and run inference.
 
 Important behavior:
 
 - Uploading a CSV does **not** auto-add nodes/edges to the canvas.
 - The `Reset` button clears canvas and analysis results, while keeping the uploaded dataset/variables loaded.
+- Node positions are persisted with the saved graph and restored on reload.
+- Multi-select is supported with box selection, and the Canvas Details panel shows the current selection state.
 
 ## Data Preprocessing (Backend)
 

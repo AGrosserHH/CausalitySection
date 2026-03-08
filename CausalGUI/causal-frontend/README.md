@@ -62,3 +62,12 @@ Inference actions log progress in browser console:
 - inference failure details
 
 This helps diagnose UI vs API issues quickly during development.
+
+## Troubleshooting
+
+- Cannot draw edges:
+	- Confirm you already dropped at least two nodes on the canvas.
+	- Preferred gesture: drag from a node handle to another node.
+	- Fallback gesture: right-drag from source node to target node.
+	- If selection feels stuck, click empty canvas first and retry.
+	- Hard refresh the browser (Ctrl+F5) after frontend updates.

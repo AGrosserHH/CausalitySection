@@ -137,6 +137,13 @@ This reduces failures from mixed column types and missing values during causal e
 
 ## Troubleshooting
 
+- Cannot draw edges on the canvas:
+	- Ensure at least two nodes are present on the canvas. Edge drawing only works between existing nodes.
+	- Try the right-drag fallback: right-click and drag from source node to target node.
+	- Clear selection state first (click empty canvas area), then retry edge drawing.
+	- If a browser/context-menu still appears, keep the right mouse button held and drag before release.
+	- Verify the frontend is running from latest code: `cd causal-frontend`, then `npm run lint && npm test && npm run dev`.
+	- Hard refresh the browser tab (Ctrl+F5) after pulling updates.
 - `POST /api/assess_query/ 404` while selecting variables:
 	- Ensure edges are saved (the frontend now persists edges before assessment).
 	- Confirm Django server is running and frontend proxy points to `127.0.0.1:8000`.

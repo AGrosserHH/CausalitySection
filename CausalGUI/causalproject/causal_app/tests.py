@@ -50,6 +50,27 @@ class CausalApiTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		return response.data
 
+	def upload_time_series_csv(self):
+		csv_content = (
+			"timestamp,entity,A,B,C\n"
+			"2024-01-01,u1,1,0,3\n"
+			"2024-01-02,u1,2,1,2\n"
+			"2024-01-03,u1,3,1,1\n"
+			"2024-01-04,u1,4,2,1\n"
+			"2024-01-01,u2,1,1,2\n"
+			"2024-01-02,u2,2,1,2\n"
+			"2024-01-03,u2,3,2,1\n"
+			"2024-01-04,u2,4,3,1\n"
+		)
+		upload_file = SimpleUploadedFile(
+			"timeseries.csv",
+			csv_content.encode("utf-8"),
+			content_type="text/csv",
+		)
+		response = self.client.post("/api/upload_csv/", {"file": upload_file}, format="multipart")
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		return response.data
+
 	def test_upload_csv_creates_graph_and_variables(self):
 		response_data = self.upload_sample_csv()
 
@@ -223,6 +244,8 @@ class CausalApiTests(APITestCase):
 		self.assertTrue(response.data["identifiable"])
 		self.assertEqual(response.data["badge"], "trust")
 		self.assertIn("C", response.data["adjustment_set"])
+		self.assertIn("minimal_adjustment_sets", response.data)
+		self.assertIn("admissibility_checklist", response.data)
 
 	def test_graph_details_returns_evidence_status(self):
 		response_data = self.upload_sample_csv()
@@ -293,4 +316,76 @@ class CausalApiTests(APITestCase):
 		self.assertIn("edges", response.data)
 		self.assertEqual(len(response.data["edges"]), 1)
 		self.assertIn("verification_status", response.data["edges"][0])
+		self.assertIn("confidence", response.data["edges"][0])
+		self.assertIn("recommended_action", response.data["edges"][0])
+		self.assertIn("summary", response.data)
 		self.assertIn("confounder_candidates", response.data)
+
+	@patch("causal_app.views.get_causal_model_class", return_value=_FakeCausalModel)
+	def test_robustness_dashboard_returns_enhanced_fields(self, _mock_model_class):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Robustness Graph",
+				"edges": [
+					{"source": "A", "target": "B", "directed": True},
+					{"source": "C", "target": "B", "directed": True},
+				],
+			},
+			format="json",
+		)
+
+		variable_by_name = {item["name"]: item["id"] for item in response_data["variables"]}
+		response = self.client.post(
+			"/api/robustness_dashboard/",
+			{
+				"graph_id": graph_id,
+				"treatment": variable_by_name["A"],
+				"outcome": variable_by_name["B"],
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("baseline_estimate", response.data)
+		self.assertIn("diagnostics", response.data)
+		self.assertIn("sensitivity_points", response.data)
+		self.assertIn("robustness_score", response.data)
+
+	def test_time_series_analysis_returns_edge_stability(self):
+		response_data = self.upload_time_series_csv()
+		graph_id = response_data["graph_id"]
+
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Time Graph",
+				"edges": [
+					{"source": "A", "target": "B", "directed": True},
+					{"source": "C", "target": "B", "directed": True},
+				],
+			},
+			format="json",
+		)
+
+		response = self.client.post(
+			"/api/time_series_analysis/",
+			{
+				"graph_id": graph_id,
+				"time_column": "timestamp",
+				"entity_column": "entity",
+				"window_count": 3,
+				"max_lag": 2,
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data["mode"], "time-series")
+		self.assertTrue(len(response.data["edge_stability"]) >= 1)
+		self.assertTrue(len(response.data["dynamic_graphs"]) >= 1)

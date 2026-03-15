@@ -4,15 +4,15 @@ This repository contains experiments and a working prototype GUI for causal infe
 
 ## Project Layout
 
-- `CausalGUI/` - full-stack app (Django API + Vue frontend)
-- `CausalModels/` - notebooks and modeling experiments
+- `CausalGUI/` - full-stack app (Django REST API + Vue 3 frontend)
+- `CausalModels/` - Jupyter notebooks and modeling experiments
 
 ## Start Here
 
-- App setup, backend/frontend runbook, and API feature notes: `CausalGUI/README.md`
+- Full setup, runbook, and feature reference: `CausalGUI/README.md`
 - Notebook-focused dependencies and experiments: `CausalModels/requirements.txt`
 
-Recent UX and backend behavior updates (node position persistence, canvas controls, and troubleshooting) are documented in `CausalGUI/README.md`.
+The app includes an AI copilot for graph drafting (OpenAI), identification analysis, robustness dashboard, and time-series mode. All features are documented in `CausalGUI/README.md`.
 
 ## Root Shortcuts
 
@@ -39,3 +39,13 @@ cd CausalGUI/causalproject
 ..\..\.venv\Scripts\python.exe manage.py migrate
 ..\..\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
+
+## OpenAI Setup
+
+Set your API key in `CausalGUI/causalproject/.env` before starting the backend:
+
+```
+OPENAI_API_KEY=sk-proj-...
+```
+
+The file already exists with documentation inline. The `.env` is git-ignored.

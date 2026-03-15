@@ -10,6 +10,7 @@ from .views import (
     robustness_dashboard,
     root_cause_analysis,
     save_graph,
+    time_series_analysis,
     upload_csv,
     what_if_analysis,
 )
@@ -27,6 +28,7 @@ urlpatterns = [
     path('robustness_dashboard/', robustness_dashboard, name='robustness_dashboard'),
     path('what_if_analysis/', what_if_analysis, name='what_if_analysis'),
     path('root_cause_analysis/', root_cause_analysis, name='root_cause_analysis'),
+    path('time_series_analysis/', time_series_analysis, name='time_series_analysis'),
     path('openai/suggest_edges/', openai_suggest_edges, name='openai_suggest_edges'),
     path('openai/draft_graph/', openai_draft_graph, name='openai_draft_graph'),
 ]

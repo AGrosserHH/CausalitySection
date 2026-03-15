@@ -91,6 +91,11 @@ export function useCausalApi(httpClient = axios) {
     return response.data
   }
 
+  async function runTimeSeriesAnalysis(payload) {
+    const response = await httpClient.post("/api/time_series_analysis/", payload)
+    return response.data
+  }
+
   return {
     uploadCsv,
     saveGraph,
@@ -102,6 +107,7 @@ export function useCausalApi(httpClient = axios) {
     runRobustnessDashboard,
     runWhatIfAnalysis,
     runRootCauseAnalysis,
+    runTimeSeriesAnalysis,
     getErrorMessage,
   }
 }

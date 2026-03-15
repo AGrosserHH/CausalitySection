@@ -35,4 +35,15 @@ describe("useCausalApi", () => {
 
     expect(response.endpoint).toBe("/api/openai/suggest_edges/")
   })
+
+  it("calls time-series analysis endpoint", async () => {
+    const mockClient = {
+      post: async (url) => ({ data: { endpoint: url } }),
+    }
+
+    const api = useCausalApi(mockClient)
+    const response = await api.runTimeSeriesAnalysis({ graph_id: 1, time_column: "timestamp" })
+
+    expect(response.endpoint).toBe("/api/time_series_analysis/")
+  })
 })

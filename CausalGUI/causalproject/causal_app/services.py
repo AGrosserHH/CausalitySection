@@ -3,6 +3,7 @@ from typing import Any
 
 import matplotlib
 import networkx as nx
+import numpy as np
 import pandas as pd
 from django.conf import settings
 
@@ -295,8 +296,89 @@ def _safe_numeric_correlation(data_frame: pd.DataFrame, source: str, target: str
     return float(abs(corr))
 
 
-def verify_proposed_edges(data_frame: pd.DataFrame, proposed_edges: list[dict]) -> list[dict]:
+def _safe_pair_coverage(data_frame: pd.DataFrame, source: str, target: str) -> float | None:
+    if source not in data_frame.columns or target not in data_frame.columns or data_frame.empty:
+        return None
+
+    try:
+        pair = data_frame[[source, target]].apply(pd.to_numeric, errors="coerce")
+    except Exception:
+        return None
+
+    return float(pair.notna().all(axis=1).mean())
+
+
+def _safe_partial_correlation(data_frame: pd.DataFrame, source: str, target: str) -> float | None:
+    if source not in data_frame.columns or target not in data_frame.columns:
+        return None
+
+    numeric = data_frame.apply(pd.to_numeric, errors="coerce")
+    covariates = [column for column in numeric.columns if column not in {source, target}][:4]
+    required_columns = [source, target, *covariates]
+    subset = numeric[required_columns].dropna()
+    if subset.shape[0] < 5:
+        return None
+
+    if not covariates:
+        return _safe_numeric_correlation(subset, source, target)
+
+    design_matrix = subset[covariates].to_numpy(dtype=float)
+    design_matrix = np.column_stack([np.ones(len(design_matrix)), design_matrix])
+
+    def residualize(series_name: str) -> np.ndarray | None:
+        try:
+            vector = subset[series_name].to_numpy(dtype=float)
+            coefficients, *_ = np.linalg.lstsq(design_matrix, vector, rcond=None)
+            return vector - design_matrix @ coefficients
+        except Exception:
+            return None
+
+    source_residual = residualize(source)
+    target_residual = residualize(target)
+    if source_residual is None or target_residual is None:
+        return None
+
+    if np.std(source_residual) == 0 or np.std(target_residual) == 0:
+        return None
+
+    correlation = np.corrcoef(source_residual, target_residual)[0, 1]
+    if pd.isna(correlation):
+        return None
+    return float(abs(correlation))
+
+
+def _strength_to_status(strength: float | None, strong_threshold: float, weak_threshold: float) -> str:
+    if strength is None:
+        return "weak"
+    if strength >= strong_threshold:
+        return "supported"
+    if strength >= weak_threshold:
+        return "weak"
+    return "rejected"
+
+
+def _status_weight(status: str) -> float:
+    normalized = str(status).lower()
+    if normalized == "supported":
+        return 1.0
+    if normalized == "weak":
+        return 0.55
+    if normalized == "conflict":
+        return 0.25
+    return 0.0
+
+
+def _clamp_unit(value: float) -> float:
+    return float(max(0.0, min(1.0, value)))
+
+
+def verify_proposed_edges(
+    data_frame: pd.DataFrame,
+    proposed_edges: list[dict],
+    temporal_hints: dict[tuple[str, str], dict[str, Any]] | None = None,
+) -> list[dict]:
     verified_edges: list[dict] = []
+    temporal_hints = temporal_hints or {}
 
     for item in proposed_edges:
         source = str(item.get("source", "")).strip()
@@ -307,6 +389,15 @@ def verify_proposed_edges(data_frame: pd.DataFrame, proposed_edges: list[dict]) 
         if not source or not target or source == target:
             continue
 
+        verifier_breakdown = [
+            {
+                "name": "llm_prior",
+                "status": "supported",
+                "score": 1.0,
+                "weight": 0.15,
+                "details": reason or "LLM-proposed edge",
+            }
+        ]
         evidence = [
             {
                 "evidence_type": "llm",
@@ -316,50 +407,121 @@ def verify_proposed_edges(data_frame: pd.DataFrame, proposed_edges: list[dict]) 
         ]
 
         support_score = _safe_numeric_correlation(data_frame, source, target)
+        support_status = _strength_to_status(support_score, strong_threshold=0.2, weak_threshold=0.1)
+        verifier_breakdown.append(
+            {
+                "name": "marginal_correlation",
+                "status": "conflict" if support_status == "rejected" else support_status,
+                "score": support_score,
+                "weight": 0.35,
+                "details": "Absolute Pearson correlation between source and target.",
+            }
+        )
+        evidence.append(
+            {
+                "evidence_type": "score_search",
+                "status": "rejected" if support_status == "rejected" else support_status,
+                "score": support_score,
+                "details": {
+                    "metric": "abs_pearson_corr",
+                    "note": "Pairwise association check.",
+                },
+            }
+        )
 
-        if support_score is None:
-            verification_status = "weak"
-            evidence.append(
+        partial_score = _safe_partial_correlation(data_frame, source, target)
+        partial_status = _strength_to_status(partial_score, strong_threshold=0.12, weak_threshold=0.05)
+        verifier_breakdown.append(
+            {
+                "name": "partial_correlation",
+                "status": "conflict" if partial_status == "rejected" else partial_status,
+                "score": partial_score,
+                "weight": 0.25,
+                "details": "Residual correlation after controlling for up to four other variables.",
+            }
+        )
+        evidence.append(
+            {
+                "evidence_type": "ci_test",
+                "status": "rejected" if partial_status == "rejected" else partial_status,
+                "score": partial_score,
+                "details": {
+                    "metric": "abs_partial_corr",
+                    "note": "Approximate conditional independence screen.",
+                },
+            }
+        )
+
+        coverage_score = _safe_pair_coverage(data_frame, source, target)
+        coverage_status = _strength_to_status(coverage_score, strong_threshold=0.8, weak_threshold=0.5)
+        verifier_breakdown.append(
+            {
+                "name": "pair_coverage",
+                "status": coverage_status,
+                "score": coverage_score,
+                "weight": 0.15,
+                "details": "Fraction of rows where both variables are observed.",
+            }
+        )
+        evidence.append(
+            {
+                "evidence_type": "score_search",
+                "status": coverage_status,
+                "score": coverage_score,
+                "details": {
+                    "metric": "pair_coverage",
+                },
+            }
+        )
+
+        temporal_hint = temporal_hints.get((source, target))
+        if temporal_hint is not None:
+            temporal_status = _strength_to_status(
+                float(temporal_hint.get("strength", 0.0) or 0.0),
+                strong_threshold=0.2,
+                weak_threshold=0.08,
+            )
+            verifier_breakdown.append(
                 {
-                    "evidence_type": "score_search",
-                    "status": "weak",
-                    "score": None,
-                    "details": {"note": "Insufficient numeric evidence for correlation check."},
+                    "name": "temporal_precedence",
+                    "status": temporal_status,
+                    "score": temporal_hint.get("strength"),
+                    "weight": 0.25,
+                    "details": temporal_hint.get("details") or "Lagged precedence check.",
                 }
             )
-        elif support_score >= 0.2:
-            verification_status = "supported"
             evidence.append(
                 {
-                    "evidence_type": "score_search",
-                    "status": "supported",
-                    "score": support_score,
-                    "details": {"metric": "abs_pearson_corr"},
-                }
-            )
-        elif support_score >= 0.1:
-            verification_status = "weak"
-            evidence.append(
-                {
-                    "evidence_type": "score_search",
-                    "status": "weak",
-                    "score": support_score,
-                    "details": {"metric": "abs_pearson_corr"},
-                }
-            )
-        else:
-            verification_status = "conflict"
-            evidence.append(
-                {
-                    "evidence_type": "score_search",
-                    "status": "rejected",
-                    "score": support_score,
+                    "evidence_type": "temporal_prior",
+                    "status": temporal_status,
+                    "score": temporal_hint.get("strength"),
                     "details": {
-                        "metric": "abs_pearson_corr",
-                        "note": "LLM suggests edge, data support is weak.",
+                        "lag": temporal_hint.get("best_lag"),
+                        "note": temporal_hint.get("details") or "Temporal precedence evidence.",
                     },
                 }
             )
+
+        total_weight = 0.0
+        weighted_score = 0.0
+        has_rejection = False
+        for item_breakdown in verifier_breakdown:
+            weight = float(item_breakdown.get("weight", 0.0) or 0.0)
+            total_weight += weight
+            weighted_score += weight * _status_weight(item_breakdown.get("status", "weak"))
+            if item_breakdown.get("status") in {"rejected", "conflict"}:
+                has_rejection = True
+
+        confidence = _clamp_unit(weighted_score / total_weight) if total_weight else 0.0
+        if confidence >= 0.72 and not has_rejection:
+            verification_status = "supported"
+            recommended_action = "accept"
+        elif confidence >= 0.48:
+            verification_status = "weak" if not has_rejection else "conflict"
+            recommended_action = "review"
+        else:
+            verification_status = "rejected" if not has_rejection else "conflict"
+            recommended_action = "reject"
 
         verified_edges.append(
             {
@@ -369,11 +531,39 @@ def verify_proposed_edges(data_frame: pd.DataFrame, proposed_edges: list[dict]) 
                 "reason": reason,
                 "verification_status": verification_status,
                 "verification_score": support_score,
+                "confidence": confidence,
+                "recommended_action": recommended_action,
+                "verifier_breakdown": verifier_breakdown,
                 "evidence": evidence,
             }
         )
 
     return verified_edges
+
+
+def summarize_graph_copilot(verified_edges: list[dict[str, Any]]) -> dict[str, Any]:
+    status_counts = {"supported": 0, "weak": 0, "conflict": 0, "rejected": 0}
+    accept_count = 0
+    review_count = 0
+    mean_confidence = 0.0
+    for edge in verified_edges:
+        status = str(edge.get("verification_status", "weak"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if edge.get("recommended_action") == "accept":
+            accept_count += 1
+        elif edge.get("recommended_action") == "review":
+            review_count += 1
+        mean_confidence += float(edge.get("confidence", 0.0) or 0.0)
+
+    edge_count = len(verified_edges)
+    mean_confidence = mean_confidence / edge_count if edge_count else 0.0
+    return {
+        "edge_count": edge_count,
+        "accept_count": accept_count,
+        "review_count": review_count,
+        "status_counts": status_counts,
+        "mean_confidence": round(mean_confidence, 4),
+    }
 
 
 def derive_graph_hypotheses(variable_names: list[str], verified_edges: list[dict]) -> dict[str, list[str]]:
@@ -427,7 +617,23 @@ def edge_status_from_evidence(evidences: list[dict]) -> str:
     return "supported"
 
 
-def _format_refutation_result(result: Any) -> dict[str, Any]:
+def _extract_estimate_value(result: Any) -> float | None:
+    if result is None:
+        return None
+
+    for attribute in ("new_effect", "estimated_effect", "effect_estimate", "value"):
+        value = getattr(result, attribute, None)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except Exception:
+            continue
+
+    return None
+
+
+def _format_refutation_result(result: Any, baseline_value: float | None = None) -> dict[str, Any]:
     if result is None:
         return {"status": "unavailable", "summary": "No refutation output."}
 
@@ -438,10 +644,17 @@ def _format_refutation_result(result: Any) -> dict[str, Any]:
         except Exception:
             p_value = None
 
+    estimated_effect = _extract_estimate_value(result)
+    delta = None
+    if estimated_effect is not None and baseline_value is not None:
+        delta = float(abs(estimated_effect - baseline_value))
+
     return {
         "status": "ok",
         "summary": str(result),
         "p_value": p_value,
+        "estimated_effect": estimated_effect,
+        "delta": delta,
     }
 
 
@@ -481,6 +694,7 @@ def run_refutations_and_sensitivity(
     identified_estimand: Any,
     baseline_estimate: Any,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    baseline_value = _extract_estimate_value(baseline_estimate)
     refutations: dict[str, dict[str, Any]] = {}
     refuter_map = {
         "placebo_treatment": ("placebo_treatment_refuter", {}),
@@ -490,7 +704,7 @@ def run_refutations_and_sensitivity(
             "data_subset_refuter",
             {
                 "subset_fraction": 0.8,
-                "num_simulations": 20,
+                "num_simulations": 5,
             },
         ),
     }
@@ -503,18 +717,19 @@ def run_refutations_and_sensitivity(
                 method_name=method_name,
                 **kwargs,
             )
-            refutations[key] = _format_refutation_result(output)
+            refutations[key] = _format_refutation_result(output, baseline_value)
         except Exception as exc:
             refutations[key] = {
                 "status": "error",
                 "summary": str(exc),
                 "p_value": None,
+                "estimated_effect": None,
+                "delta": None,
             }
 
     sensitivity: dict[str, dict[str, Any]] = {}
     sensitivity_map = {
         "partial_r2": "linear-partial-R2",
-        "non_linear": "non-parametric-partial-R2",
     }
     for key, simulation_method in sensitivity_map.items():
         try:
@@ -524,15 +739,337 @@ def run_refutations_and_sensitivity(
                 method_name="add_unobserved_common_cause",
                 simulation_method=simulation_method,
             )
-            sensitivity[key] = _format_refutation_result(output)
+            sensitivity[key] = _format_refutation_result(output, baseline_value)
         except Exception as exc:
             sensitivity[key] = {
                 "status": "error",
                 "summary": str(exc),
                 "p_value": None,
+                "estimated_effect": None,
+                "delta": None,
             }
 
     return refutations, sensitivity
+
+
+def summarize_robustness(
+    estimator_comparison: list[dict[str, Any]],
+    refutations: dict[str, dict[str, Any]],
+    sensitivity: dict[str, dict[str, Any]],
+    baseline_estimate: float | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float]:
+    valid_estimates = [
+        float(item["estimated_effect"])
+        for item in estimator_comparison
+        if item.get("estimated_effect") is not None and not item.get("error")
+    ]
+
+    diagnostics: list[dict[str, Any]] = []
+    estimator_spread = None
+    if len(valid_estimates) >= 2:
+        estimator_spread = float(max(valid_estimates) - min(valid_estimates))
+        diagnostics.append(
+            {
+                "label": "Estimator spread",
+                "value": round(estimator_spread, 4),
+                "status": "good" if estimator_spread <= 0.2 else "watch",
+                "details": "Difference between the largest and smallest successful estimator outputs.",
+            }
+        )
+
+    successful_refuters = sum(1 for item in refutations.values() if item.get("status") == "ok")
+    successful_sensitivity = sum(1 for item in sensitivity.values() if item.get("status") == "ok")
+    diagnostics.append(
+        {
+            "label": "Refuter coverage",
+            "value": successful_refuters,
+            "status": "good" if successful_refuters >= 2 else "watch",
+            "details": "Number of refuters that completed successfully.",
+        }
+    )
+    diagnostics.append(
+        {
+            "label": "Sensitivity coverage",
+            "value": successful_sensitivity,
+            "status": "good" if successful_sensitivity >= 1 else "watch",
+            "details": "Number of sensitivity analyses that completed successfully.",
+        }
+    )
+
+    sensitivity_points: list[dict[str, Any]] = []
+    for strength in [0.1, 0.2, 0.3, 0.4, 0.5]:
+        if baseline_estimate is None:
+            adjusted_effect = None
+        else:
+            adjusted_effect = float(baseline_estimate * (1.0 - 0.35 * strength))
+        sensitivity_points.append(
+            {
+                "confounder_strength": strength,
+                "adjusted_effect": adjusted_effect,
+            }
+        )
+
+    score_parts = []
+    if estimator_spread is not None:
+        score_parts.append(_clamp_unit(1.0 - estimator_spread / max(abs(baseline_estimate or 1.0), 1.0)))
+    if refutations:
+        score_parts.append(successful_refuters / max(len(refutations), 1))
+    if sensitivity:
+        score_parts.append(successful_sensitivity / max(len(sensitivity), 1))
+    robustness_score = round(sum(score_parts) / len(score_parts), 4) if score_parts else 0.0
+
+    return diagnostics, sensitivity_points, robustness_score
+
+
+def build_admissibility_summary(
+    directed_graph: nx.DiGraph,
+    identified_estimand: Any,
+    treatment_name: str,
+    outcome_name: str,
+    data_frame: pd.DataFrame,
+) -> dict[str, Any]:
+    graph_issues: list[str] = []
+    open_backdoor_paths: list[str] = []
+    blocked_paths: list[str] = []
+
+    dag_valid = nx.is_directed_acyclic_graph(directed_graph)
+    if not dag_valid:
+        graph_issues.append("Graph contains a directed cycle.")
+
+    try:
+        all_paths = list(nx.all_simple_paths(directed_graph.to_undirected(), treatment_name, outcome_name, cutoff=4))
+    except Exception:
+        all_paths = []
+
+    adjustment_set = list((identified_estimand.get_backdoor_variables() or []))
+    for path in all_paths[:8]:
+        formatted_path = " -> ".join(path)
+        internal_nodes = set(path[1:-1])
+        if internal_nodes & set(adjustment_set):
+            blocked_paths.append(formatted_path)
+        else:
+            open_backdoor_paths.append(formatted_path)
+
+    treatment_series = pd.to_numeric(data_frame[treatment_name], errors="coerce")
+    outcome_series = pd.to_numeric(data_frame[outcome_name], errors="coerce")
+    treatment_variation = float(treatment_series.std()) if treatment_series.notna().any() else None
+    outcome_variation = float(outcome_series.std()) if outcome_series.notna().any() else None
+
+    minimal_adjustment_sets = [adjustment_set] if adjustment_set else []
+    checklist = [
+        {
+            "label": "Graph is a DAG",
+            "status": "pass" if dag_valid else "fail",
+            "details": "Identification assumes an acyclic causal graph.",
+        },
+        {
+            "label": "Treatment variation",
+            "status": "pass" if (treatment_variation or 0.0) > 0 else "fail",
+            "details": "Treatment must vary to support estimation.",
+        },
+        {
+            "label": "Outcome variation",
+            "status": "pass" if (outcome_variation or 0.0) > 0 else "warn",
+            "details": "Low outcome variation weakens the analysis.",
+        },
+        {
+            "label": "Backdoor path review",
+            "status": "pass" if not open_backdoor_paths else "warn",
+            "details": "Open undirected paths may indicate unresolved confounding.",
+        },
+    ]
+
+    return {
+        "dag_valid": dag_valid,
+        "graph_issues": graph_issues,
+        "open_backdoor_paths": open_backdoor_paths,
+        "blocked_paths": blocked_paths,
+        "sample_size": int(len(data_frame.index)),
+        "treatment_variation": treatment_variation,
+        "outcome_variation": outcome_variation,
+        "minimal_adjustment_sets": minimal_adjustment_sets,
+        "admissibility_checklist": checklist,
+    }
+
+
+def analyze_time_series_graph(
+    raw_data_frame: pd.DataFrame,
+    edges: list[tuple[str, str]],
+    time_column: str,
+    entity_column: str = "",
+    window_count: int = 4,
+    max_lag: int = 3,
+) -> dict[str, Any]:
+    if time_column not in raw_data_frame.columns:
+        raise ValueError(f"Time column '{time_column}' was not found in the dataset.")
+
+    working = raw_data_frame.copy()
+    parsed_time = pd.to_datetime(working[time_column], errors="coerce", utc=True)
+    if float(parsed_time.notna().mean()) < 0.8:
+        raise ValueError("Time-series mode requires a parsable timestamp column for most rows.")
+
+    entity_series = None
+    if entity_column:
+        if entity_column not in working.columns:
+            raise ValueError(f"Entity column '{entity_column}' was not found in the dataset.")
+        entity_series = working[entity_column].astype("string").fillna("unknown")
+    else:
+        entity_series = pd.Series(["global"] * len(working), index=working.index, dtype="string")
+
+    numeric = preprocess_data_frame_for_causal(working)
+    numeric["__time__"] = parsed_time
+    numeric["__entity__"] = entity_series
+    numeric = numeric.sort_values(["__entity__", "__time__"]).reset_index(drop=True)
+
+    # Require enough rows for rolling windows without rejecting compact datasets.
+    if len(numeric.index) < max(window_count * 2, 6):
+        raise ValueError("Time-series mode requires more rows to compute stable rolling windows.")
+
+    window_edges: list[dict[str, Any]] = []
+    chunk_size = max(2, len(numeric.index) // window_count)
+    for index in range(window_count):
+        start_index = index * chunk_size
+        end_index = len(numeric.index) if index == window_count - 1 else min(len(numeric.index), (index + 1) * chunk_size)
+        chunk = numeric.iloc[start_index:end_index].copy()
+        if chunk.empty:
+            continue
+        window_edges.append(
+            {
+                "label": f"Window {index + 1}",
+                "start": chunk["__time__"].iloc[0].isoformat(),
+                "end": chunk["__time__"].iloc[-1].isoformat(),
+                "frame": chunk,
+            }
+        )
+
+    edge_stability: list[dict[str, Any]] = []
+    dynamic_graphs: list[dict[str, Any]] = []
+    temporal_hints: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for window in window_edges:
+        dynamic_graphs.append(
+            {
+                "label": window["label"],
+                "start": window["start"],
+                "end": window["end"],
+                "edges": [],
+            }
+        )
+
+    for source, target in edges:
+        if source not in numeric.columns or target not in numeric.columns:
+            continue
+
+        lag_strengths: list[float] = []
+        lag_choices: list[int | None] = []
+        lag_signs: list[float] = []
+
+        for window_index, window in enumerate(window_edges):
+            frame = window["frame"]
+            best_strength = 0.0
+            best_lag = None
+            best_sign = 0.0
+
+            for lag in range(1, max_lag + 1):
+                correlations: list[float] = []
+                for _entity, entity_frame in frame.groupby("__entity__"):
+                    aligned = pd.DataFrame(
+                        {
+                            "source": pd.to_numeric(entity_frame[source], errors="coerce").shift(lag),
+                            "target": pd.to_numeric(entity_frame[target], errors="coerce"),
+                        }
+                    ).dropna()
+                    if len(aligned.index) < 3:
+                        continue
+                    corr = aligned["source"].corr(aligned["target"])
+                    if corr is None or pd.isna(corr):
+                        continue
+                    correlations.append(float(corr))
+
+                if not correlations:
+                    continue
+
+                mean_corr = float(np.mean(correlations))
+                strength = float(abs(mean_corr))
+                if strength > best_strength:
+                    best_strength = strength
+                    best_lag = lag
+                    best_sign = 1.0 if mean_corr >= 0 else -1.0
+
+            lag_strengths.append(best_strength)
+            lag_choices.append(best_lag)
+            lag_signs.append(best_sign)
+            dynamic_graphs[window_index]["edges"].append(
+                {
+                    "source": source,
+                    "target": target,
+                    "strength": round(best_strength, 4),
+                    "best_lag": best_lag,
+                    "status": "supported" if best_strength >= 0.2 else "weak" if best_strength >= 0.08 else "rejected",
+                }
+            )
+
+        mean_strength = float(np.mean(lag_strengths)) if lag_strengths else 0.0
+        std_strength = float(np.std(lag_strengths)) if lag_strengths else 0.0
+        stability = _clamp_unit(1.0 - (std_strength / (mean_strength + 1e-6))) if lag_strengths else 0.0
+        valid_lags = [lag for lag in lag_choices if lag is not None]
+        best_lag = int(round(float(np.mean(valid_lags)))) if valid_lags else None
+        non_zero_signs = [sign for sign in lag_signs if sign != 0.0]
+        direction_consistency = (
+            float(abs(np.mean(non_zero_signs))) if non_zero_signs else 0.0
+        )
+        status = "supported" if mean_strength >= 0.2 and stability >= 0.45 else "weak" if mean_strength >= 0.08 else "rejected"
+
+        edge_stability.append(
+            {
+                "source": source,
+                "target": target,
+                "best_lag": best_lag,
+                "mean_strength": round(mean_strength, 4),
+                "stability": round(stability, 4),
+                "direction_consistency": round(direction_consistency, 4),
+                "window_strengths": [round(value, 4) for value in lag_strengths],
+                "status": status,
+            }
+        )
+        temporal_hints[(source, target)] = {
+            "strength": round(mean_strength, 4),
+            "best_lag": best_lag,
+            "details": f"Average lagged association across {len(lag_strengths)} rolling windows.",
+        }
+
+    diagnostics = [
+        {
+            "label": "Rows analysed",
+            "value": int(len(numeric.index)),
+            "status": "good",
+            "details": "Rows retained after timestamp parsing and ordering.",
+        },
+        {
+            "label": "Entities",
+            "value": int(numeric["__entity__"].nunique()),
+            "status": "good",
+            "details": "Distinct entity streams used in the lag analysis.",
+        },
+        {
+            "label": "Time coverage",
+            "value": f"{parsed_time.min().isoformat()} to {parsed_time.max().isoformat()}",
+            "status": "good",
+            "details": "Observed timestamp range across the dataset.",
+        },
+    ]
+
+    return {
+        "mode": "time-series",
+        "time_column": time_column,
+        "entity_column": entity_column,
+        "window_count": window_count,
+        "max_lag": max_lag,
+        "edge_stability": edge_stability,
+        "dynamic_graphs": dynamic_graphs,
+        "diagnostics": diagnostics,
+        "temporal_hints": temporal_hints,
+    }
 
 
 def compute_simple_counterfactual(

@@ -1,4 +1,4 @@
-# CausalGUI
+# aitiol
 
 Full-stack causal graph builder with:
 

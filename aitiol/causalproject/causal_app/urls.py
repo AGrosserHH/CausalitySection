@@ -1,6 +1,11 @@
 from django.urls import path
 
 from .views import (
+    agent_apply_cleaning,
+    agent_estimate_plan,
+    agent_profile,
+    agent_suggest_cleaning,
+    agent_suggest_model,
     assess_query,
     causal_inference,
     get_variables,
@@ -31,5 +36,10 @@ urlpatterns = [
     path('time_series_analysis/', time_series_analysis, name='time_series_analysis'),
     path('openai/suggest_edges/', openai_suggest_edges, name='openai_suggest_edges'),
     path('openai/draft_graph/', openai_draft_graph, name='openai_draft_graph'),
+    path('agent/profile/', agent_profile, name='agent_profile'),
+    path('agent/suggest_cleaning/', agent_suggest_cleaning, name='agent_suggest_cleaning'),
+    path('agent/apply_cleaning/', agent_apply_cleaning, name='agent_apply_cleaning'),
+    path('agent/suggest_model/', agent_suggest_model, name='agent_suggest_model'),
+    path('agent/estimate_plan/', agent_estimate_plan, name='agent_estimate_plan'),
 ]
 

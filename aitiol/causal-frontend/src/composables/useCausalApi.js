@@ -96,6 +96,31 @@ export function useCausalApi(httpClient = axios) {
     return response.data
   }
 
+  async function agentProfileData(graphId) {
+    const response = await httpClient.post("/api/agent/profile/", { graph_id: graphId })
+    return response.data
+  }
+
+  async function agentSuggestCleaning(graphId) {
+    const response = await httpClient.post("/api/agent/suggest_cleaning/", { graph_id: graphId })
+    return response.data
+  }
+
+  async function agentApplyCleaning(payload) {
+    const response = await httpClient.post("/api/agent/apply_cleaning/", payload)
+    return response.data
+  }
+
+  async function agentSuggestModel(payload) {
+    const response = await httpClient.post("/api/agent/suggest_model/", payload)
+    return response.data
+  }
+
+  async function agentEstimatePlan(payload) {
+    const response = await httpClient.post("/api/agent/estimate_plan/", payload)
+    return response.data
+  }
+
   return {
     uploadCsv,
     saveGraph,
@@ -108,6 +133,11 @@ export function useCausalApi(httpClient = axios) {
     runWhatIfAnalysis,
     runRootCauseAnalysis,
     runTimeSeriesAnalysis,
+    agentProfileData,
+    agentSuggestCleaning,
+    agentApplyCleaning,
+    agentSuggestModel,
+    agentEstimatePlan,
     getErrorMessage,
   }
 }

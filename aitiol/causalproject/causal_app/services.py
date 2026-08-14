@@ -1,4 +1,6 @@
+import functools
 import os
+import warnings
 from typing import Any
 
 import matplotlib
@@ -15,6 +17,25 @@ def get_causal_model_class():
     from dowhy import CausalModel
 
     return CausalModel
+
+
+def suppress_numeric_estimation_warnings(func):
+    """Silence numpy/statsmodels RuntimeWarnings raised during estimation.
+
+    A singular regression design matrix (constant or perfectly collinear
+    columns) makes statsmodels' condition-number check divide by zero. The
+    estimate is still returned; the underlying data problem is surfaced to the
+    user through the agent profiler (constant_column / collinear_pair issues)
+    rather than as console spam on every run.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 def normalize_binary_outcome(data_frame: pd.DataFrame, outcome_name: str) -> pd.DataFrame:
@@ -63,7 +84,7 @@ def preprocess_data_frame_for_causal(data_frame: pd.DataFrame) -> pd.DataFrame:
             processed[column] = numeric_series.astype("float")
             continue
 
-        datetime_series = pd.to_datetime(series, errors="coerce", utc=True)
+        datetime_series = pd.to_datetime(series, errors="coerce", utc=True, format="mixed")
         datetime_ratio = float(datetime_series.notna().mean())
         if datetime_ratio >= 0.8:
             epoch_seconds = (
@@ -137,6 +158,7 @@ def select_estimation_method(identified_estimand: Any, requested_method: str | N
     return None
 
 
+@suppress_numeric_estimation_warnings
 def estimate_effect(
     data_frame: pd.DataFrame,
     treatment_name: str,
@@ -658,6 +680,7 @@ def _format_refutation_result(result: Any, baseline_value: float | None = None) 
     }
 
 
+@suppress_numeric_estimation_warnings
 def run_estimator_comparison(
     model: Any,
     identified_estimand: Any,
@@ -689,6 +712,7 @@ def run_estimator_comparison(
     return results
 
 
+@suppress_numeric_estimation_warnings
 def run_refutations_and_sensitivity(
     model: Any,
     identified_estimand: Any,

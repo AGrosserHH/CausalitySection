@@ -24,6 +24,7 @@
         <option disabled value="">--Select--</option>
         <option value="backdoor.linear_regression">Backdoor: Linear Regression</option>
         <option value="backdoor.propensity_score_matching">Propensity Matching</option>
+        <option value="backdoor.propensity_score_weighting">Propensity Weighting</option>
         <option value="iv.instrumental_variable">Instrumental Variable</option>
         <option value="frontdoor.two_stage_regression">2-Stage Regression</option>
       </select>

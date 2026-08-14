@@ -232,6 +232,100 @@ class RootCauseResponseSerializer(serializers.Serializer):
     distribution_change_attribution = AttributionItemSerializer(many=True)
 
 
+class AgentProfileRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+
+
+class AgentProfileResponseSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    dataset_source = serializers.ChoiceField(choices=["raw", "cleaned"])
+    row_count = serializers.IntegerField()
+    column_count = serializers.IntegerField()
+    duplicate_row_count = serializers.IntegerField(required=False, default=0)
+    columns = serializers.ListField(child=serializers.DictField(), default=list)
+    issues = serializers.ListField(child=serializers.DictField(), default=list)
+
+
+class AgentSuggestCleaningRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+
+
+class CleaningStepSerializer(serializers.Serializer):
+    step_id = serializers.CharField()
+    step_type = serializers.CharField()
+    column = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    params = serializers.DictField(required=False, default=dict)
+    rationale = serializers.CharField(required=False, allow_blank=True, default="")
+    severity = serializers.CharField(required=False, allow_blank=True, default="info")
+    default_action = serializers.CharField(required=False, allow_blank=True, default="review")
+
+
+class AgentSuggestCleaningResponseSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    dataset_source = serializers.ChoiceField(choices=["raw", "cleaned"])
+    steps = CleaningStepSerializer(many=True)
+
+
+class AgentApplyCleaningRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    steps = CleaningStepSerializer(many=True)
+
+
+class AgentApplyCleaningResponseSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    cleaned_file = serializers.CharField()
+    applied_steps = serializers.ListField(child=serializers.DictField(), default=list)
+    row_count_before = serializers.IntegerField()
+    row_count_after = serializers.IntegerField()
+    column_count_before = serializers.IntegerField()
+    column_count_after = serializers.IntegerField()
+    dropped_columns = serializers.ListField(child=serializers.CharField(), default=list)
+    variables = VariableItemSerializer(many=True)
+    preview = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+
+
+class AgentSuggestModelRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    context = serializers.CharField(required=False, allow_blank=True, default="")
+    max_edges = serializers.IntegerField(required=False, min_value=1, max_value=25, default=12)
+    excluded_variables = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        default=list,
+    )
+
+
+class RoleCandidateSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    variable_id = serializers.IntegerField(required=False, allow_null=True)
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class AgentSuggestModelResponseSerializer(serializers.Serializer):
+    edges = DraftedEdgeSerializer(many=True)
+    treatment_candidates = RoleCandidateSerializer(many=True)
+    outcome_candidates = RoleCandidateSerializer(many=True)
+    recommended_estimator = serializers.DictField(required=False, default=dict)
+    identification = serializers.DictField(required=False, default=dict)
+    confounder_candidates = serializers.ListField(child=serializers.CharField(), default=list)
+    iv_candidates = serializers.ListField(child=serializers.CharField(), default=list)
+    missing_confounder_hypotheses = serializers.ListField(child=serializers.CharField(), default=list)
+    summary = serializers.DictField(required=False, default=dict)
+    llm_used = serializers.BooleanField(default=False)
+    notes = serializers.ListField(child=serializers.CharField(), default=list)
+
+
+class AgentEstimatePlanRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    treatment = serializers.IntegerField()
+    outcome = serializers.IntegerField()
+
+
+class AgentEstimatePlanResponseSerializer(serializers.Serializer):
+    identification = serializers.DictField()
+    recommended_estimator = serializers.DictField()
+
+
 class TimeSeriesAnalysisRequestSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField()
     time_column = serializers.CharField(max_length=100)

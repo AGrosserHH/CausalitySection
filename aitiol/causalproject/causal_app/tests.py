@@ -356,6 +356,260 @@ class CausalApiTests(APITestCase):
 		self.assertIn("sensitivity_points", response.data)
 		self.assertIn("robustness_score", response.data)
 
+	def upload_messy_csv(self):
+		rows = [
+			"customerID,Tenure,TotalCharges,Contract,Churn",
+		]
+		for index in range(30):
+			charge = "" if index == 3 else str(20.5 + index)
+			contract = "Month-to-month" if index % 2 else "Two year"
+			churn = "Yes" if index % 3 == 0 else "No"
+			rows.append(f"C{index:04d},{index},{charge},{contract},{churn}")
+		rows.append(rows[1])
+		csv_content = "\n".join(rows) + "\n"
+		upload_file = SimpleUploadedFile(
+			"messy.csv",
+			csv_content.encode("utf-8"),
+			content_type="text/csv",
+		)
+		response = self.client.post("/api/upload_csv/", {"file": upload_file}, format="multipart")
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		return response.data
+
+	def test_agent_profile_flags_data_issues(self):
+		response_data = self.upload_messy_csv()
+		response = self.client.post(
+			"/api/agent/profile/",
+			{"graph_id": response_data["graph_id"]},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data["dataset_source"], "raw")
+		self.assertEqual(response.data["column_count"], 5)
+		issue_types = {item["issue_type"] for item in response.data["issues"]}
+		self.assertIn("id_like_column", issue_types)
+		self.assertIn("duplicate_rows", issue_types)
+		issue_columns = {
+			item["column"] for item in response.data["issues"] if item["issue_type"] == "some_missing"
+		}
+		self.assertIn("TotalCharges", issue_columns)
+
+	def test_agent_suggest_cleaning_returns_steps(self):
+		response_data = self.upload_messy_csv()
+		response = self.client.post(
+			"/api/agent/suggest_cleaning/",
+			{"graph_id": response_data["graph_id"]},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		step_ids = {item["step_id"] for item in response.data["steps"]}
+		self.assertIn("drop_column:customerID", step_ids)
+		self.assertIn("drop_duplicate_rows:__dataset__", step_ids)
+		self.assertIn("impute_missing:TotalCharges", step_ids)
+
+	def test_agent_suggest_cleaning_flags_collinear_pair(self):
+		rows = ["A,B,C"]
+		for index in range(30):
+			rows.append(f"{index},{index * 2},{(index * 7) % 13}")
+		upload_file = SimpleUploadedFile(
+			"collinear.csv",
+			("\n".join(rows) + "\n").encode("utf-8"),
+			content_type="text/csv",
+		)
+		upload_response = self.client.post(
+			"/api/upload_csv/", {"file": upload_file}, format="multipart"
+		)
+		self.assertEqual(upload_response.status_code, status.HTTP_200_OK)
+
+		profile_response = self.client.post(
+			"/api/agent/profile/", {"graph_id": upload_response.data["graph_id"]}, format="json"
+		)
+		self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+		issue_types = {item["issue_type"] for item in profile_response.data["issues"]}
+		self.assertIn("collinear_pair", issue_types)
+
+		plan_response = self.client.post(
+			"/api/agent/suggest_cleaning/",
+			{"graph_id": upload_response.data["graph_id"]},
+			format="json",
+		)
+		self.assertEqual(plan_response.status_code, status.HTTP_200_OK)
+		step_ids = {item["step_id"] for item in plan_response.data["steps"]}
+		self.assertIn("drop_column:B", step_ids)
+
+	def test_agent_apply_cleaning_persists_cleaned_file_and_drops_variables(self):
+		response_data = self.upload_messy_csv()
+		graph_id = response_data["graph_id"]
+
+		suggest_response = self.client.post(
+			"/api/agent/suggest_cleaning/", {"graph_id": graph_id}, format="json"
+		)
+		self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+
+		apply_response = self.client.post(
+			"/api/agent/apply_cleaning/",
+			{"graph_id": graph_id, "steps": suggest_response.data["steps"]},
+			format="json",
+		)
+
+		self.assertEqual(apply_response.status_code, status.HTTP_200_OK)
+		self.assertIn("customerID", apply_response.data["dropped_columns"])
+		self.assertLess(
+			apply_response.data["row_count_after"], apply_response.data["row_count_before"]
+		)
+		variable_names = {item["name"] for item in apply_response.data["variables"]}
+		self.assertNotIn("customerID", variable_names)
+
+		graph = CausalGraph.objects.get(id=graph_id)
+		self.assertTrue(graph.cleaned_file)
+		self.assertTrue(graph.cleaning_plan)
+
+		profile_response = self.client.post(
+			"/api/agent/profile/", {"graph_id": graph_id}, format="json"
+		)
+		self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+		self.assertEqual(profile_response.data["dataset_source"], "cleaned")
+
+	def test_agent_suggest_model_without_llm_uses_heuristics(self):
+		response_data = self.upload_messy_csv()
+
+		with override_settings(OPENAI_API_KEY=""):
+			response = self.client.post(
+				"/api/agent/suggest_model/",
+				{"graph_id": response_data["graph_id"]},
+				format="json",
+			)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertFalse(response.data["llm_used"])
+		self.assertTrue(response.data["outcome_candidates"])
+		outcome_names = [item["name"] for item in response.data["outcome_candidates"]]
+		self.assertIn("Churn", outcome_names)
+		self.assertIn("recommended_estimator", response.data)
+		self.assertIn("identification", response.data)
+
+	@patch(
+		"causal_app.views.suggest_model_with_openai",
+		return_value={
+			"edges": [
+				{"source": "Tenure", "target": "Churn", "directed": True, "reason": "Longer tenure reduces churn."}
+			],
+			"treatment_candidates": ["Contract"],
+			"outcome_candidates": ["Churn"],
+			"unobserved_confounders": ["customer income"],
+			"notes": "Contract type is the most actionable lever.",
+		},
+	)
+	@override_settings(OPENAI_API_KEY="test-key")
+	def test_agent_suggest_model_with_llm(self, _mock_model):
+		response_data = self.upload_messy_csv()
+
+		response = self.client.post(
+			"/api/agent/suggest_model/",
+			{"graph_id": response_data["graph_id"], "context": "telco churn"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertTrue(response.data["llm_used"])
+		edge = response.data["edges"][0]
+		self.assertEqual(edge["source"], "Tenure")
+		self.assertIn("verification_status", edge)
+		treatment_names = [item["name"] for item in response.data["treatment_candidates"]]
+		self.assertIn("Contract", treatment_names)
+		variable_by_name = {item["name"]: item["id"] for item in response_data["variables"]}
+		treatment = next(
+			item for item in response.data["treatment_candidates"] if item["name"] == "Contract"
+		)
+		self.assertEqual(treatment["variable_id"], variable_by_name["Contract"])
+		self.assertTrue(
+			any("unobserved confounder" in note.lower() for note in response.data["notes"])
+		)
+
+	def test_agent_suggest_model_respects_excluded_variables(self):
+		response_data = self.upload_messy_csv()
+
+		with override_settings(OPENAI_API_KEY=""):
+			response = self.client.post(
+				"/api/agent/suggest_model/",
+				{
+					"graph_id": response_data["graph_id"],
+					"excluded_variables": ["Tenure", "customerID"],
+				},
+				format="json",
+			)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		mentioned = set()
+		for edge in response.data["edges"]:
+			mentioned.add(edge["source"])
+			mentioned.add(edge["target"])
+		for item in response.data["treatment_candidates"] + response.data["outcome_candidates"]:
+			mentioned.add(item["name"])
+		self.assertNotIn("Tenure", mentioned)
+		self.assertNotIn("customerID", mentioned)
+
+	@patch("causal_app.agent_service.get_causal_model_class", return_value=_FakeCausalModel)
+	def test_agent_estimate_plan_uses_saved_canvas_graph(self, _mock_model_class):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+		variable_by_name = {item["name"]: item["id"] for item in response_data["variables"]}
+
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Canvas Graph",
+				"edges": [
+					{"source": "A", "target": "B", "directed": True},
+					{"source": "C", "target": "B", "directed": True},
+					{"source": "C", "target": "A", "directed": True},
+				],
+			},
+			format="json",
+		)
+
+		response = self.client.post(
+			"/api/agent/estimate_plan/",
+			{
+				"graph_id": graph_id,
+				"treatment": variable_by_name["A"],
+				"outcome": variable_by_name["B"],
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertTrue(response.data["identification"]["identifiable"])
+		self.assertIn("C", response.data["identification"]["adjustment_set"])
+		self.assertIn("method_name", response.data["recommended_estimator"])
+
+		# Adapt the canvas: drop the confounder edges, keep only A -> B.
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Canvas Graph",
+				"edges": [{"source": "A", "target": "B", "directed": True}],
+			},
+			format="json",
+		)
+
+		response = self.client.post(
+			"/api/agent/estimate_plan/",
+			{
+				"graph_id": graph_id,
+				"treatment": variable_by_name["A"],
+				"outcome": variable_by_name["B"],
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertTrue(response.data["identification"]["checked"])
+
 	def test_time_series_analysis_returns_edge_stability(self):
 		response_data = self.upload_time_series_csv()
 		graph_id = response_data["graph_id"]

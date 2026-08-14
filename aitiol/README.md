@@ -5,7 +5,7 @@ Full-stack causal graph builder with:
 - Django REST API (`causalproject/`)
 - Vue 3 + Vite frontend (`causal-frontend/`)
 
-Features: interactive graph canvas, AI-assisted edge drafting (OpenAI), statistical edge verification, identification analysis (admissibility checklist, backdoor paths, adjustment sets), robustness dashboard (estimator comparison, refutations, sensitivity), and time-series causal analysis.
+Features: interactive graph canvas, AI-assisted edge drafting (OpenAI), statistical edge verification, identification analysis (admissibility checklist, backdoor paths, adjustment sets), robustness dashboard (estimator comparison, refutations, sensitivity), time-series causal analysis, and an optional **Causality Agent** that profiles the uploaded data, proposes a reviewable cleaning plan, and suggests a causal model (edges, treatment/outcome candidates, estimator).
 
 This is the canonical setup and operations runbook for the app. For repository-level overview, see `../README.md`.
 
@@ -93,6 +93,11 @@ npm run build
 | POST | `/api/openai/suggest_edges/` | LLM edge suggestions from variable names only |
 | POST | `/api/openai/draft_graph/` | LLM draft + statistical verification against uploaded dataset |
 | POST | `/api/time_series_analysis/` | Rolling-window temporal causal analysis, edge stability |
+| POST | `/api/agent/profile/` | Causality Agent: dataset profile (types, missingness, quality issues) |
+| POST | `/api/agent/suggest_cleaning/` | Causality Agent: rule-based, reviewable cleaning plan |
+| POST | `/api/agent/apply_cleaning/` | Causality Agent: apply accepted steps, persist a cleaned dataset copy |
+| POST | `/api/agent/suggest_model/` | Causality Agent: suggested causal model (edges + roles + estimator), LLM-assisted when `OPENAI_API_KEY` is set |
+| POST | `/api/agent/estimate_plan/` | Causality Agent: re-evaluate identifiability + recommended estimator against the currently saved canvas graph |
 
 ## Notes
 
@@ -100,6 +105,18 @@ npm run build
 - Workspace Python interpreter is configured in `.vscode/settings.json` to use `.venv` at repository root.
 - `python-dotenv` is used to load `.env`; it is listed in `requirements.txt`.
 - The robustness dashboard runs three estimators by default (`linear_regression`, `propensity_score_matching`, `propensity_score_weighting`). `doubly_robust_estimator` is excluded by default due to memory usage in dev.
+
+## Causality Agent (optional)
+
+The **Causality Agent** panel in the main view is an opt-in, staged assistant. Each stage waits for user approval:
+
+1. **Profile data** - per-column types, missingness, cardinality, plus flagged issues (ID-like columns, constant columns, mixed numeric/text, duplicates, outliers, collinear pairs, datetime candidates).
+2. **Suggest cleaning plan** - rule-based steps derived from the profile (`drop_column`, `drop_duplicate_rows`, `coerce_numeric`, `normalize_datetime`, `cap_outliers`, `impute_missing`). Each step shows a rationale; recommended steps are pre-ticked, everything can be unticked. Applying writes a cleaned CSV to `media/datasets/cleaned/` - the raw upload is kept. Once a cleaned copy exists, all analysis endpoints automatically use it. Dropping a column also removes its variable (and any edges touching it) from the graph.
+3. **Suggest causal model** - proposes edges (LLM-drafted when `OPENAI_API_KEY` is set, otherwise correlation heuristics with heuristic directions), verifies them statistically with the existing verifier stack, suggests treatment/outcome candidates, checks identifiability of the top pair (DoWhy), and recommends an estimator (propensity methods for binary treatments with confounders, weighting for large samples, regression otherwise). The non-rejected edges are drawn on the graph canvas immediately (status-colored), where they can be modified like any hand-drawn graph; "Review in Copilot" additionally opens per-edge evidence review and pre-fills treatment, outcome, and method in Controls.
+
+The agent works without an OpenAI key: profiling and cleaning are fully deterministic, and model suggestion falls back to statistical heuristics (marked as such in the panel).
+
+Estimates always track the canvas: when the graph is edited (edges or nodes added/removed), the agent panel's identifiability check and estimator recommendation refresh automatically against the adapted graph (debounced, via `/api/agent/estimate_plan/`), and Graph Copilot drafts include the current canvas edges as LLM context. Run Inference, Identification, and the Robustness Dashboard persist the canvas graph before every run, so they always operate on the model as currently drawn.
 
 ## Current Interaction Flow
 
@@ -183,3 +200,6 @@ This reduces failures from mixed column types and missing values during causal e
 	- Backend now falls back to safer estimation paths automatically.
 - `exog contains inf or nans`:
 	- Addressed by preprocessing/imputation; restart Django after pulling latest changes.
+- `RuntimeWarning: divide by zero encountered in scalar divide` (statsmodels `linear_model.py`):
+	- Harmless: statsmodels' condition-number check divides by a zero eigenvalue when the regression design matrix contains a constant or perfectly collinear column. The estimate is still computed.
+	- The warning is suppressed around estimation calls in current code (restart Django after pulling). The underlying data issue is flagged by the Causality Agent profiler (`constant_column` / `collinear_pair`), and the cleaning plan proposes dropping one column of a collinear pair.

@@ -96,6 +96,9 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        # Wait for concurrent writers instead of failing with "database is locked"
+        # (the frontend can fire overlapping saves from debounced refreshers).
+        "OPTIONS": {"timeout": 20},
     }
 }
 

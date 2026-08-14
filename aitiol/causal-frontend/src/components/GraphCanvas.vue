@@ -822,6 +822,24 @@ function removeSelectedElements() {
 
   selected.remove()
   emitGraphChange()
+  emitSelectionChange(null)
+  return removedCount
+}
+
+function removeNodeByName(nodeName) {
+  if (!cy.value || !nodeName) {
+    return 0
+  }
+
+  const node = cy.value.nodes().filter((element) => element.data("label") === nodeName)
+  if (!node.length) {
+    return 0
+  }
+
+  const removedCount = node.length + node.connectedEdges().length
+  node.remove()
+  emitGraphChange()
+  emitSelectionChange(getSelectionPayload())
   return removedCount
 }
 
@@ -896,6 +914,7 @@ defineExpose({
   fitGraph,
   relayoutGraph,
   redo,
+  removeNodeByName,
   removeSelectedElements,
   resetGraph,
   serializeGraph,

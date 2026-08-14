@@ -46,6 +46,8 @@
 <script setup>
 import { computed } from "vue"
 
+import { formatEffectValue, interpretEffect, methodLabel as sharedMethodLabel } from "../composables/useInferenceFormatting"
+
 const props = defineProps({
   inferenceResult: {
     type: [String, Number, null],
@@ -72,46 +74,11 @@ const effectValue = computed(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
-const formattedEffect = computed(() => {
-  if (effectValue.value === null) {
-    return "N/A"
-  }
-  return effectValue.value.toFixed(4)
-})
+const formattedEffect = computed(() => formatEffectValue(effectValue.value))
 
-const methodLabel = computed(() => {
-  const method = props.inferenceResponse?.method_name
-  if (!method) {
-    return "Not specified"
-  }
+const methodLabel = computed(() => sharedMethodLabel(props.inferenceResponse?.method_name))
 
-  const labels = {
-    "backdoor.linear_regression": "Backdoor | Linear Regression",
-    "backdoor.propensity_score_matching": "Backdoor | Propensity Score Matching",
-    "backdoor.propensity_score_weighting": "Backdoor | Propensity Score Weighting",
-    "backdoor.doubly_robust_estimator": "Backdoor | Doubly Robust",
-    "iv.instrumental_variable": "Instrumental Variable",
-    "frontdoor.two_stage_regression": "Frontdoor | Two-Stage Regression",
-    "backdoor.diff_in_means_fallback": "Fallback | Difference in Means",
-  }
-
-  return labels[method] || method
-})
-
-const effectInterpretation = computed(() => {
-  if (effectValue.value === null) {
-    return "No estimate was returned."
-  }
-
-  const absValue = Math.abs(effectValue.value)
-  if (absValue < 0.001) {
-    return "Very small estimated effect."
-  }
-  if (effectValue.value > 0) {
-    return "Increasing treatment is associated with higher outcome."
-  }
-  return "Increasing treatment is associated with lower outcome."
-})
+const effectInterpretation = computed(() => interpretEffect(effectValue.value))
 
 const estimandSections = computed(() => {
   const raw = props.inferenceResponse?.estimand_string

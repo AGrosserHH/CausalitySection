@@ -9,9 +9,28 @@ from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from .agent_service import (
+    apply_cleaning_plan,
+    build_profile_summary_for_prompt,
+    check_identifiability,
+    profile_data_frame,
+    recommend_estimator,
+    suggest_causal_model,
+    suggest_cleaning_plan,
+)
 from .models import CausalEdge, CausalGraph, EdgeEvidence, Variable
-from .openai_service import suggest_edges_with_openai
+from .openai_service import suggest_edges_with_openai, suggest_model_with_openai
 from .serializers import (
+    AgentApplyCleaningRequestSerializer,
+    AgentApplyCleaningResponseSerializer,
+    AgentEstimatePlanRequestSerializer,
+    AgentEstimatePlanResponseSerializer,
+    AgentProfileRequestSerializer,
+    AgentProfileResponseSerializer,
+    AgentSuggestCleaningRequestSerializer,
+    AgentSuggestCleaningResponseSerializer,
+    AgentSuggestModelRequestSerializer,
+    AgentSuggestModelResponseSerializer,
     AssessQueryRequestSerializer,
     AssessQueryResponseSerializer,
     CausalInferenceRequestSerializer,
@@ -55,6 +74,51 @@ from .services import (
 )
 
 logger = logging.getLogger("causal")
+
+
+def _effective_dataset_path(graph):
+    """Prefer the agent-cleaned dataset when one exists; fall back to the raw upload."""
+    if graph.cleaned_file:
+        cleaned_path = graph.cleaned_file.path
+        if os.path.exists(cleaned_path):
+            return cleaned_path, "cleaned"
+    if graph.data_file:
+        return graph.data_file.path, "raw"
+    return None, None
+
+
+def _read_effective_dataframe(graph):
+    """Load the graph's dataset (cleaned copy preferred). Returns (df, source, error_response)."""
+    dataset_path, source = _effective_dataset_path(graph)
+    if dataset_path is None:
+        return None, None, Response({"error": "No dataset file linked to graph."}, status=400)
+    if not os.path.exists(dataset_path):
+        return None, None, Response(
+            {"error": f"Dataset file not found: {os.path.basename(dataset_path)}"},
+            status=400,
+        )
+    try:
+        data_frame = pd.read_csv(dataset_path)
+    except Exception as exc:
+        return None, None, Response({"error": f"Failed to read dataset: {exc}"}, status=400)
+    return data_frame, source, None
+
+
+def _canvas_edges_context(graph):
+    """Describe the graph the user has built on the canvas, for LLM prompts."""
+    existing_edges = list(
+        CausalEdge.objects.filter(graph=graph).select_related("source", "target")
+    )
+    if not existing_edges:
+        return ""
+    edge_lines = ", ".join(
+        f"{edge.source.name}->{edge.target.name}" + (" (locked)" if edge.manual_lock else "")
+        for edge in existing_edges
+    )
+    return (
+        "The user has already built this causal graph on the canvas; treat it as the "
+        f"current working model and suggest complementary or corrected edges: {edge_lines}."
+    )
 
 
 def _first_error(errors):
@@ -255,16 +319,9 @@ def causal_inference(request):
     except CausalGraph.DoesNotExist:
         return Response({"error": "Graph not found."}, status=404)
 
-    if not graph.data_file:
-        return Response({"error": "No dataset file linked to graph."}, status=400)
-
-    dataset_path = graph.data_file.path
-    if not os.path.exists(dataset_path):
-        logger.error("Dataset file not found: %s", dataset_path)
-        return Response(
-            {"error": f"Dataset file not found: {graph.data_file.name}"},
-            status=400,
-        )
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
 
     try:
         treatment_var = Variable.objects.get(id=treatment_id, graph=graph)
@@ -274,11 +331,6 @@ def causal_inference(request):
             {"error": "Treatment or outcome variable was not found in the graph."},
             status=400,
         )
-
-    try:
-        data_frame = pd.read_csv(dataset_path)
-    except Exception as exc:
-        return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
 
     data_frame = preprocess_data_frame_for_causal(data_frame)
 
@@ -416,6 +468,10 @@ def openai_draft_graph(request):
     if len(variable_names) < 2:
         return Response({"error": "At least two variables are required."}, status=400)
 
+    canvas_context = _canvas_edges_context(graph)
+    if canvas_context:
+        context = f"{context}\n\n{canvas_context}" if context else canvas_context
+
     try:
         proposed_edges = suggest_edges_with_openai(
             variables=variable_names,
@@ -519,19 +575,15 @@ def assess_query(request):
     except CausalGraph.DoesNotExist:
         return Response({"error": "Graph not found."}, status=404)
 
-    if not graph.data_file:
-        return Response({"error": "No dataset file linked to graph."}, status=400)
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
 
     try:
         treatment_var = Variable.objects.get(id=treatment_id, graph=graph)
         outcome_var = Variable.objects.get(id=outcome_id, graph=graph)
     except Variable.DoesNotExist:
         return Response({"error": "Treatment or outcome variable was not found in the graph."}, status=400)
-
-    try:
-        data_frame = pd.read_csv(graph.data_file.path)
-    except Exception as exc:
-        return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
 
     data_frame = preprocess_data_frame_for_causal(data_frame)
 
@@ -679,13 +731,9 @@ def _load_graph_dataset_and_nodes(graph_id: int):
     except CausalGraph.DoesNotExist:
         return None, None, None, Response({"error": "Graph not found."}, status=404)
 
-    if not graph.data_file:
-        return None, None, None, Response({"error": "No dataset file linked to graph."}, status=400)
-
-    try:
-        data_frame = pd.read_csv(graph.data_file.path)
-    except Exception as exc:
-        return None, None, None, Response({"error": f"Failed to read dataset: {exc}"}, status=400)
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return None, None, None, error_response
 
     data_frame = preprocess_data_frame_for_causal(data_frame)
 
@@ -816,13 +864,9 @@ def time_series_analysis(request):
     except CausalGraph.DoesNotExist:
         return Response({"error": "Graph not found."}, status=404)
 
-    if not graph.data_file:
-        return Response({"error": "No dataset file linked to graph."}, status=400)
-
-    try:
-        raw_data_frame = pd.read_csv(graph.data_file.path)
-    except Exception as exc:
-        return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
+    raw_data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
 
     edges = CausalEdge.objects.filter(graph_id=graph_id)
     if not edges.exists():
@@ -927,5 +971,281 @@ def root_cause_analysis(request):
 
     attributions = compute_root_cause_attributions(data_frame, outcome_var.name)
     response_serializer = RootCauseResponseSerializer(data=attributions)
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_profile(request):
+    serializer = AgentProfileRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    try:
+        profile = profile_data_frame(data_frame)
+    except Exception as exc:
+        logger.exception("Data profiling failed")
+        return Response({"error": f"Data profiling failed: {exc}"}, status=400)
+
+    response_payload = {
+        "graph_id": graph.id,
+        "dataset_source": dataset_source,
+        **profile,
+    }
+    response_serializer = AgentProfileResponseSerializer(data=response_payload)
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_suggest_cleaning(request):
+    serializer = AgentSuggestCleaningRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    try:
+        profile = profile_data_frame(data_frame)
+        steps = suggest_cleaning_plan(profile)
+    except Exception as exc:
+        logger.exception("Cleaning-plan suggestion failed")
+        return Response({"error": f"Cleaning-plan suggestion failed: {exc}"}, status=400)
+
+    response_serializer = AgentSuggestCleaningResponseSerializer(
+        data={"graph_id": graph.id, "dataset_source": dataset_source, "steps": steps}
+    )
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_apply_cleaning(request):
+    serializer = AgentApplyCleaningRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    steps = serializer.validated_data["steps"]
+    if not steps:
+        return Response({"error": "No cleaning steps were provided."}, status=400)
+
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    row_count_before = int(len(data_frame.index))
+    column_count_before = int(len(data_frame.columns))
+    columns_before = [str(name) for name in data_frame.columns]
+
+    try:
+        cleaned_frame, applied_steps = apply_cleaning_plan(data_frame, steps)
+    except Exception as exc:
+        logger.exception("Applying cleaning plan failed")
+        return Response({"error": f"Applying cleaning plan failed: {exc}"}, status=400)
+
+    columns_after = [str(name) for name in cleaned_frame.columns]
+    dropped_columns = [name for name in columns_before if name not in columns_after]
+
+    try:
+        from django.core.files.base import ContentFile
+
+        csv_bytes = cleaned_frame.to_csv(index=False).encode("utf-8")
+        cleaned_name = f"graph_{graph.id}_cleaned.csv"
+        if graph.cleaned_file:
+            graph.cleaned_file.delete(save=False)
+        graph.cleaned_file.save(cleaned_name, ContentFile(csv_bytes), save=False)
+        graph.cleaning_plan = list(graph.cleaning_plan or []) + applied_steps
+        graph.save(update_fields=["cleaned_file", "cleaning_plan"])
+    except Exception as exc:
+        logger.exception("Failed to persist cleaned dataset")
+        return Response({"error": f"Failed to persist cleaned dataset: {exc}"}, status=400)
+
+    if dropped_columns:
+        with transaction.atomic():
+            graph.variables.filter(name__in=dropped_columns).delete()
+            node_positions = dict(graph.node_positions or {})
+            for name in dropped_columns:
+                node_positions.pop(name, None)
+            graph.node_positions = node_positions
+            graph.save(update_fields=["node_positions"])
+
+    variables = [
+        {"id": variable.id, "name": variable.name}
+        for variable in graph.variables.order_by("id")
+    ]
+    preview = cleaned_frame.head(3).to_dict(orient="records")
+
+    response_serializer = AgentApplyCleaningResponseSerializer(
+        data={
+            "graph_id": graph.id,
+            "cleaned_file": graph.cleaned_file.name,
+            "applied_steps": applied_steps,
+            "row_count_before": row_count_before,
+            "row_count_after": int(len(cleaned_frame.index)),
+            "column_count_before": column_count_before,
+            "column_count_after": int(len(cleaned_frame.columns)),
+            "dropped_columns": dropped_columns,
+            "variables": variables,
+            "preview": preview,
+        }
+    )
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_suggest_model(request):
+    serializer = AgentSuggestModelRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    context = serializer.validated_data.get("context", "")
+    max_edges = serializer.validated_data.get("max_edges", 12)
+    excluded_variables = serializer.validated_data.get("excluded_variables") or []
+
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    dropped_columns = [name for name in excluded_variables if name in data_frame.columns]
+    if dropped_columns:
+        data_frame = data_frame.drop(columns=dropped_columns)
+
+    if len(data_frame.columns) < 2:
+        return Response({"error": "At least two variables are required."}, status=400)
+
+    canvas_context = _canvas_edges_context(graph)
+    if canvas_context:
+        context = f"{context}\n\n{canvas_context}" if context else canvas_context
+    if dropped_columns:
+        exclusion_context = (
+            "The user removed these variables from the model on purpose; do not propose "
+            f"edges or roles involving them: {', '.join(dropped_columns)}."
+        )
+        context = f"{context}\n\n{exclusion_context}" if context else exclusion_context
+
+    llm_suggestion = None
+    llm_error = ""
+    if settings.OPENAI_API_KEY:
+        try:
+            profile = profile_data_frame(data_frame)
+            llm_suggestion = suggest_model_with_openai(
+                variables=[str(name) for name in data_frame.columns],
+                profile_summary=build_profile_summary_for_prompt(profile),
+                context=context,
+                max_edges=max_edges,
+            )
+        except Exception as exc:
+            logger.exception("LLM model suggestion failed; falling back to heuristics")
+            llm_error = f"LLM suggestion failed ({exc}); statistical heuristics were used instead."
+
+    try:
+        result = suggest_causal_model(
+            data_frame,
+            context=context,
+            max_edges=max_edges,
+            llm_suggestion=llm_suggestion,
+        )
+    except Exception as exc:
+        logger.exception("Causal model suggestion failed")
+        return Response({"error": f"Causal model suggestion failed: {exc}"}, status=400)
+
+    if llm_error:
+        result["notes"] = [llm_error] + list(result.get("notes", []))
+
+    variable_ids = {variable.name: variable.id for variable in graph.variables.all()}
+    for candidate_list in (result["treatment_candidates"], result["outcome_candidates"]):
+        for candidate in candidate_list:
+            candidate["variable_id"] = variable_ids.get(candidate["name"])
+
+    response_serializer = AgentSuggestModelResponseSerializer(data=result)
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_estimate_plan(request):
+    """Re-evaluate identifiability and the recommended estimator against the graph
+    currently saved from the canvas, so estimates always reflect user edits."""
+    serializer = AgentEstimatePlanRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    treatment_id = serializer.validated_data["treatment"]
+    outcome_id = serializer.validated_data["outcome"]
+
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    try:
+        treatment_var = Variable.objects.get(id=treatment_id, graph=graph)
+        outcome_var = Variable.objects.get(id=outcome_id, graph=graph)
+    except Variable.DoesNotExist:
+        return Response(
+            {"error": "Treatment or outcome variable was not found in the graph."},
+            status=400,
+        )
+
+    edges = CausalEdge.objects.filter(graph_id=graph_id)
+    if not edges.exists():
+        return Response({"error": "No causal graph found for the given graph_id."}, status=404)
+
+    edge_list = [(edge.source.name, edge.target.name) for edge in edges]
+    processed = preprocess_data_frame_for_causal(data_frame)
+
+    try:
+        identification = check_identifiability(
+            processed, edge_list, treatment_var.name, outcome_var.name
+        )
+        recommended_estimator = recommend_estimator(
+            processed, treatment_var.name, identification.get("adjustment_set", [])
+        )
+    except Exception as exc:
+        logger.exception("Estimate-plan refresh failed")
+        return Response({"error": f"Estimate-plan refresh failed: {exc}"}, status=400)
+
+    response_serializer = AgentEstimatePlanResponseSerializer(
+        data={
+            "identification": identification,
+            "recommended_estimator": recommended_estimator,
+        }
+    )
     response_serializer.is_valid(raise_exception=True)
     return Response(response_serializer.data, status=200)

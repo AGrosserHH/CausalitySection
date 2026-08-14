@@ -11,12 +11,37 @@
     <main class="main-content">
       <header class="page-header">
         <h1 class="title">Causal AI Graph Builder</h1>
-        <p class="subtitle">Build a graph, review verifier-backed suggestions, pressure-test identification, and switch into time-series diagnostics when the dataset supports it.</p>
+        <p class="subtitle">Upload data, let the agent profile/clean/model it (or build by hand), refine the graph on the canvas, estimate the effect, and pressure-test the result.</p>
       </header>
 
       <div v-if="statusMessage" :class="['status-banner', statusType]">
         {{ statusMessage }}
       </div>
+
+      <h2 class="flow-title">1 &middot; Causality Agent <span class="flow-hint">profile &rarr; clean &rarr; model &rarr; estimate &rarr; compare</span></h2>
+
+      <CausalityAgentPanel
+        :graph-id="graphId"
+        :profile="agentProfile"
+        :cleaning-plan="agentCleaningPlan"
+        :cleaning-result="agentCleaningResult"
+        :model-suggestion="agentModelSuggestion"
+        :selected-method="selectedMethod"
+        :estimation="estimationOutcome"
+        :comparison="agentComparisonResult"
+        :busy="agentBusy"
+        :busy-label="agentBusyLabel"
+        @run-profile="runAgentProfile"
+        @suggest-cleaning="runAgentSuggestCleaning"
+        @apply-cleaning="runAgentApplyCleaning"
+        @suggest-model="runAgentSuggestModel"
+        @adopt-model="adoptAgentModel"
+        @run-estimation="runAgentEstimation"
+        @compare-models="runAgentCompareModels"
+        @clear="clearAgentResults"
+      />
+
+      <h2 class="flow-title">2 &middot; Model canvas <span class="flow-hint">refine the graph by hand, review Copilot suggestions</span></h2>
 
       <section class="workspace-layout">
         <div class="graph-panel">
@@ -108,33 +133,6 @@
         <p v-else class="assessment-line">No active selection. Click a node or edge (or box-select several) to inspect it - then remove it with the Delete button here, the Delete key, or "Delete Selected" in Controls. Deleting a node also removes its edges; the variable stays in the sidebar for re-use.</p>
       </section>
 
-      <div id="inference-result-anchor">
-        <InferenceResult
-          :inference-result="inferenceResult"
-          :causal-graph-image-url="causalGraphImageUrl"
-          :inference-response="inferenceResponse"
-        />
-      </div>
-
-      <CausalityAgentPanel
-        :graph-id="graphId"
-        :profile="agentProfile"
-        :cleaning-plan="agentCleaningPlan"
-        :cleaning-result="agentCleaningResult"
-        :model-suggestion="agentModelSuggestion"
-        :selected-method="selectedMethod"
-        :estimation="estimationOutcome"
-        :busy="agentBusy"
-        :busy-label="agentBusyLabel"
-        @run-profile="runAgentProfile"
-        @suggest-cleaning="runAgentSuggestCleaning"
-        @apply-cleaning="runAgentApplyCleaning"
-        @suggest-model="runAgentSuggestModel"
-        @adopt-model="adoptAgentModel"
-        @run-estimation="runAgentEstimation"
-        @clear="clearAgentResults"
-      />
-
       <GraphCopilotPanel
         :suggestions="copilotSuggestions"
         :summary="copilotSummary"
@@ -145,85 +143,114 @@
         @clear="clearCopilotDraft"
       />
 
-      <IdentificationPanel :result="assessmentResult" />
+      <h2 class="flow-title">3 &middot; Results <span class="flow-hint">estimated effect, identification, interpretation</span></h2>
 
-      <RobustnessDashboard
-        :result="robustnessResult"
-        @run="runRobustness"
-        @export-json="exportRobustness('json')"
-        @export-csv="exportRobustness('csv')"
-      />
+      <div id="inference-result-anchor">
+        <InferenceResult
+          :inference-result="inferenceResult"
+          :causal-graph-image-url="causalGraphImageUrl"
+          :inference-response="inferenceResponse"
+        />
+        <p v-if="!inferenceResponse" class="flow-placeholder">No estimation yet. Run it from the agent panel ("4. Run estimation") or with "Run Inference" in the canvas Controls.</p>
+      </div>
 
-      <section class="counterfactual-panel">
-        <div class="panel-header">
-          <div>
-            <h3 class="panel-title">Counterfactual, What-if & Root-cause</h3>
-            <p class="panel-subtitle">Quick intervention simulation plus anomaly and shift attribution.</p>
+      <details class="flow-details" open>
+        <summary>Identification &amp; admissibility</summary>
+        <IdentificationPanel :result="assessmentResult" />
+        <p v-if="!assessmentResult" class="flow-placeholder">Updates automatically once a graph, treatment, and outcome are set.</p>
+      </details>
+
+      <h2 class="flow-title">4 &middot; Diagnostics &amp; advanced <span class="flow-hint">robustness, what-if, time series</span></h2>
+
+      <details class="flow-details">
+        <summary>Robustness dashboard</summary>
+        <RobustnessDashboard
+          :result="robustnessResult"
+          :running="robustnessRunning"
+          @run="runRobustness"
+          @export-json="exportRobustness('json')"
+          @export-csv="exportRobustness('csv')"
+        />
+      </details>
+
+      <details class="flow-details">
+        <summary>Counterfactual, what-if &amp; root-cause</summary>
+        <section class="counterfactual-panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Counterfactual, What-if & Root-cause</h3>
+              <p class="panel-subtitle">Quick intervention simulation plus anomaly and shift attribution.</p>
+            </div>
+            <div class="panel-actions">
+              <button class="panel-action" type="button" :disabled="!whatIfResult && !rootCauseResult" @click="exportCounterfactual('json')">Export JSON</button>
+              <button class="panel-action" type="button" :disabled="!whatIfResult && !rootCauseResult" @click="exportCounterfactual('csv')">Export CSV</button>
+            </div>
           </div>
-          <div class="panel-actions">
-            <button class="panel-action" type="button" :disabled="!whatIfResult && !rootCauseResult" @click="exportCounterfactual('json')">Export JSON</button>
-            <button class="panel-action" type="button" :disabled="!whatIfResult && !rootCauseResult" @click="exportCounterfactual('csv')">Export CSV</button>
+
+          <div class="what-if-controls">
+            <label class="control-label" for="what-if-treatment">Treatment intervention value</label>
+            <input id="what-if-treatment" v-model="whatIfTreatmentValue" class="what-if-input" type="number" step="0.1" />
+            <button class="panel-action primary-run" type="button" @click="runWhatIf">Run what-if</button>
+            <button class="panel-action" type="button" @click="runRootCause">Run root-cause</button>
           </div>
-        </div>
 
-        <div class="what-if-controls">
-          <label class="control-label" for="what-if-treatment">Treatment intervention value</label>
-          <input id="what-if-treatment" v-model="whatIfTreatmentValue" class="what-if-input" type="number" step="0.1" />
-          <button class="panel-action primary-run" type="button" @click="runWhatIf">Run what-if</button>
-          <button class="panel-action" type="button" @click="runRootCause">Run root-cause</button>
-        </div>
+          <div class="triple-grid">
+            <article v-if="whatIfResult" class="assessment-card">
+              <h4>What-if result</h4>
+              <p><strong>Baseline outcome mean:</strong> {{ whatIfResult.baseline_outcome_mean }}</p>
+              <p><strong>Baseline treatment mean:</strong> {{ whatIfResult.baseline_treatment_mean }}</p>
+              <p><strong>Estimated ATE:</strong> {{ whatIfResult.estimated_ate ?? 'n/a' }}</p>
+              <p><strong>Counterfactual outcome mean:</strong> {{ whatIfResult.counterfactual_outcome_mean ?? 'n/a' }}</p>
+              <p>{{ whatIfResult.note }}</p>
+            </article>
 
-        <div class="triple-grid">
-          <article v-if="whatIfResult" class="assessment-card">
-            <h4>What-if result</h4>
-            <p><strong>Baseline outcome mean:</strong> {{ whatIfResult.baseline_outcome_mean }}</p>
-            <p><strong>Baseline treatment mean:</strong> {{ whatIfResult.baseline_treatment_mean }}</p>
-            <p><strong>Estimated ATE:</strong> {{ whatIfResult.estimated_ate ?? 'n/a' }}</p>
-            <p><strong>Counterfactual outcome mean:</strong> {{ whatIfResult.counterfactual_outcome_mean ?? 'n/a' }}</p>
-            <p>{{ whatIfResult.note }}</p>
-          </article>
+            <article v-if="rootCauseResult" class="assessment-card">
+              <h4>Anomaly attribution</h4>
+              <ul class="compact-list">
+                <li v-for="item in rootCauseResult.anomaly_attribution || []" :key="`an-${item.variable}`">{{ item.variable }} | {{ item.score }}</li>
+              </ul>
+            </article>
 
-          <article v-if="rootCauseResult" class="assessment-card">
-            <h4>Anomaly attribution</h4>
-            <ul class="compact-list">
-              <li v-for="item in rootCauseResult.anomaly_attribution || []" :key="`an-${item.variable}`">{{ item.variable }} | {{ item.score }}</li>
-            </ul>
-          </article>
+            <article v-if="rootCauseResult" class="assessment-card">
+              <h4>Distribution-change attribution</h4>
+              <ul class="compact-list">
+                <li v-for="item in rootCauseResult.distribution_change_attribution || []" :key="`dc-${item.variable}`">{{ item.variable }} | {{ item.score }}</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </details>
 
-          <article v-if="rootCauseResult" class="assessment-card">
-            <h4>Distribution-change attribution</h4>
-            <ul class="compact-list">
-              <li v-for="item in rootCauseResult.distribution_change_attribution || []" :key="`dc-${item.variable}`">{{ item.variable }} | {{ item.score }}</li>
-            </ul>
-          </article>
-        </div>
-      </section>
+      <details class="flow-details">
+        <summary>Time-series mode</summary>
+        <TimeSeriesPanel
+          :result="timeSeriesResult"
+          :time-column="timeSeriesConfig.timeColumn"
+          :entity-column="timeSeriesConfig.entityColumn"
+          :window-count="timeSeriesConfig.windowCount"
+          :max-lag="timeSeriesConfig.maxLag"
+          :has-preview="Boolean(timeSeriesPreviewSnapshot)"
+          @run="runTimeSeries"
+          @preview-window="previewTimeSeriesWindow"
+          @restore-preview="restoreTimeSeriesPreview"
+          @update:time-column="timeSeriesConfig.timeColumn = $event"
+          @update:entity-column="timeSeriesConfig.entityColumn = $event"
+          @update:window-count="timeSeriesConfig.windowCount = normalizePositiveInteger($event, 4)"
+          @update:max-lag="timeSeriesConfig.maxLag = normalizePositiveInteger($event, 3)"
+        />
+      </details>
 
-      <TimeSeriesPanel
-        :result="timeSeriesResult"
-        :time-column="timeSeriesConfig.timeColumn"
-        :entity-column="timeSeriesConfig.entityColumn"
-        :window-count="timeSeriesConfig.windowCount"
-        :max-lag="timeSeriesConfig.maxLag"
-        :has-preview="Boolean(timeSeriesPreviewSnapshot)"
-        @run="runTimeSeries"
-        @preview-window="previewTimeSeriesWindow"
-        @restore-preview="restoreTimeSeriesPreview"
-        @update:time-column="timeSeriesConfig.timeColumn = $event"
-        @update:entity-column="timeSeriesConfig.entityColumn = $event"
-        @update:window-count="timeSeriesConfig.windowCount = normalizePositiveInteger($event, 4)"
-        @update:max-lag="timeSeriesConfig.maxLag = normalizePositiveInteger($event, 3)"
-      />
-
-      <section v-if="edgeEvidenceList.length" class="evidence-panel">
-        <h3 class="panel-title">Edge Evidence</h3>
-        <ul class="compact-list">
-          <li v-for="item in edgeEvidenceList" :key="item.key">
-            <strong>{{ item.source }} -> {{ item.target }}</strong>
-            <span> | {{ item.status }} | {{ item.evidenceCount }} evidence item(s)</span>
-          </li>
-        </ul>
-      </section>
+      <details v-if="edgeEvidenceList.length" class="flow-details">
+        <summary>Edge evidence ({{ edgeEvidenceList.length }})</summary>
+        <section class="evidence-panel">
+          <ul class="compact-list">
+            <li v-for="item in edgeEvidenceList" :key="item.key">
+              <strong>{{ item.source }} -> {{ item.target }}</strong>
+              <span> | {{ item.status }} | {{ item.evidenceCount }} evidence item(s)</span>
+            </li>
+          </ul>
+        </section>
+      </details>
     </main>
   </div>
 </template>
@@ -260,6 +287,7 @@ const {
   agentApplyCleaning,
   agentSuggestModel,
   agentEstimatePlan,
+  agentCompareModels,
   getErrorMessage,
 } = useCausalApi()
 
@@ -279,6 +307,7 @@ const statusType = ref("success")
 const edgeEvidenceList = ref([])
 const assessmentResult = ref(null)
 const robustnessResult = ref(null)
+const robustnessRunning = ref(false)
 const whatIfTreatmentValue = ref(0)
 const whatIfResult = ref(null)
 const rootCauseResult = ref(null)
@@ -290,6 +319,7 @@ const agentModelSuggestion = ref(null)
 const agentBusy = ref(false)
 const agentBusyLabel = ref("")
 const estimationOutcome = ref(null)
+const agentComparisonResult = ref(null)
 const timeSeriesResult = ref(null)
 const timeSeriesPreviewSnapshot = ref(null)
 const timeSeriesConfig = ref({
@@ -667,6 +697,7 @@ async function handleFileUpload(file) {
     agentCleaningResult.value = null
     agentModelSuggestion.value = null
     estimationOutcome.value = null
+    agentComparisonResult.value = null
     timeSeriesResult.value = null
     timeSeriesPreviewSnapshot.value = null
     await resetGraphCanvas()
@@ -698,6 +729,7 @@ async function resetAnalysisWorkspace() {
   copilotDraft.value = null
   agentModelSuggestion.value = null
   estimationOutcome.value = null
+  agentComparisonResult.value = null
   timeSeriesResult.value = null
   timeSeriesPreviewSnapshot.value = null
   edgeEvidenceList.value = []
@@ -857,6 +889,7 @@ function clearAgentResults() {
   agentCleaningPlan.value = null
   agentCleaningResult.value = null
   agentModelSuggestion.value = null
+  agentComparisonResult.value = null
 }
 
 async function runAgentTask(label, task) {
@@ -998,7 +1031,7 @@ async function runAgentSuggestModel() {
   })
 }
 
-function adoptAgentModel() {
+async function adoptAgentModel() {
   const suggestion = agentModelSuggestion.value
   if (!suggestion?.edges?.length) {
     return
@@ -1019,6 +1052,18 @@ function adoptAgentModel() {
   if (outcome?.variable_id) {
     selectedOutcome.value = outcome.variable_id
   }
+
+  await runAgentTask(
+    "Applying the model - saving the graph and refreshing identification and the estimate plan...",
+    async () => {
+      const saved = await persistGraphEdges(false)
+      if (!saved) {
+        return
+      }
+      await refreshAssessment(false)
+      await refreshAgentEstimatePlan()
+    },
+  )
 
   const recommendedMethod = suggestion.recommended_estimator?.method_name || ""
   const userOverrodeMethod = Boolean(selectedMethod.value) && selectedMethod.value !== recommendedMethod
@@ -1186,6 +1231,9 @@ function centerGraphInView() {
 }
 
 async function runRobustness() {
+  if (robustnessRunning.value) {
+    return
+  }
   if (!canRunAssessment()) {
     setStatus("Select treatment/outcome and ensure graph has at least two nodes.", "error")
     return
@@ -1196,15 +1244,19 @@ async function runRobustness() {
     return
   }
 
+  robustnessRunning.value = true
+  setStatus("Robustness analysis is running - comparing estimators and applying refuters. This can take a minute.")
   try {
     robustnessResult.value = await runRobustnessDashboard({
       graph_id: graphId.value,
       treatment: selectedTreatment.value,
       outcome: selectedOutcome.value,
     })
-    clearStatus()
+    setStatus("Robustness analysis finished. Review the dashboard for the score, refuters, and sensitivity sweep.")
   } catch (error) {
     setStatus(getErrorMessage(error, "Failed to run robustness checks."), "error")
+  } finally {
+    robustnessRunning.value = false
   }
 }
 
@@ -1437,6 +1489,55 @@ function exportCounterfactual(format) {
   downloadTextFile(toCsv(rows), `counterfactual-root-cause-${stamp}.csv`, "text/csv;charset=utf-8")
 }
 
+async function runAgentCompareModels() {
+  const suggestion = agentModelSuggestion.value
+  const canvasNames = new Set(getCanvasNodes().map((node) => node.variableName))
+  const fallbackCandidate = (candidates) =>
+    (candidates || []).find(
+      (candidate) => candidate.variable_id && canvasNames.has(candidate.name),
+    )?.variable_id
+  const treatmentId =
+    selectedTreatment.value || fallbackCandidate(suggestion?.treatment_candidates)
+  const outcomeId = selectedOutcome.value || fallbackCandidate(suggestion?.outcome_candidates)
+
+  if (!treatmentId || !outcomeId || Number(treatmentId) === Number(outcomeId)) {
+    setStatus(
+      "Select treatment and outcome (or let the agent suggest a model first) before comparing model structures.",
+      "error",
+    )
+    return
+  }
+  if (!hasCanvasEdges()) {
+    setStatus("Draw or adopt a graph on the canvas before comparing model structures.", "error")
+    return
+  }
+
+  await runAgentTask("Estimating the effect under competing model structures...", async () => {
+    const saved = await persistGraphEdges(false)
+    if (!saved) {
+      return
+    }
+    try {
+      const payload = {
+        graph_id: Number(graphId.value),
+        treatment: Number(treatmentId),
+        outcome: Number(outcomeId),
+      }
+      if (selectedMethod.value) {
+        payload.method_name = selectedMethod.value
+      }
+      agentComparisonResult.value = await agentCompareModels(payload)
+      const verdict = agentComparisonResult.value?.stability?.verdict || "unknown"
+      setStatus(
+        `Model comparison finished: the estimate is ${verdict} across competing graph structures. See the comparison block in the agent panel.`,
+        verdict === "unstable" ? "error" : "success",
+      )
+    } catch (error) {
+      setStatus(getErrorMessage(error, "Model comparison failed."), "error")
+    }
+  })
+}
+
 async function runAgentEstimation() {
   const suggestion = agentModelSuggestion.value
   if (suggestion) {
@@ -1551,6 +1652,7 @@ async function computeInference() {
       method: responseData.method_name || selectedMethod.value || "auto-selected",
       treatmentName: variableNameById(selectedTreatment.value),
       outcomeName: variableNameById(selectedOutcome.value),
+      adjustmentSet: assessment.adjustment_set || [],
       warning:
         assessment.badge === "reject"
           ? assessment.reasons?.[0] || "Identification checks rejected this query; interpret with caution."
@@ -1627,6 +1729,49 @@ watch([graphId, selectedTreatment, selectedOutcome, graphRevision], () => {
   border: 1px solid transparent;
   padding: 10px 12px;
   font-size: 0.95rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.flow-title {
+  margin: 10px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-heading);
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 6px;
+}
+
+.flow-hint {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--vt-c-text-light-2);
+  margin-left: 8px;
+}
+
+.flow-details {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  padding: 10px 12px;
+}
+
+.flow-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-heading);
+  font-size: 0.95rem;
+}
+
+.flow-details[open] > summary {
+  margin-bottom: 10px;
+}
+
+.flow-placeholder {
+  margin: 4px 0 0;
+  color: var(--vt-c-text-light-2);
+  font-size: 0.9rem;
 }
 
 .status-banner.success {

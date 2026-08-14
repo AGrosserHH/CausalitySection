@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     agent_apply_cleaning,
+    agent_compare_models,
     agent_estimate_plan,
     agent_profile,
     agent_suggest_cleaning,
@@ -41,5 +42,6 @@ urlpatterns = [
     path('agent/apply_cleaning/', agent_apply_cleaning, name='agent_apply_cleaning'),
     path('agent/suggest_model/', agent_suggest_model, name='agent_suggest_model'),
     path('agent/estimate_plan/', agent_estimate_plan, name='agent_estimate_plan'),
+    path('agent/compare_models/', agent_compare_models, name='agent_compare_models'),
 ]
 

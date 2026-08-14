@@ -14,10 +14,14 @@ SYSTEM_PROMPT = (
 MODEL_SYSTEM_PROMPT = (
     "You are a causal analysis agent. You receive variable names plus a statistical profile of the "
     "dataset (types, missingness, ranges, quality warnings). Propose a causal model for analysis. "
-    "Return only valid JSON with keys: 'edges' (list of {source, target, directed, reason}), "
+    "Return only valid JSON with keys: 'edges' (list of {source, target, directed, reason} where each "
+    "reason is one full sentence), "
     "'treatment_candidates' (list of variable names most plausible as interventions, best first), "
     "'outcome_candidates' (list of variable names most plausible as the outcome of interest, best first), "
-    "'unobserved_confounders' (list of short strings naming likely unmeasured common causes), and "
+    "'unobserved_confounders' (list of short strings naming likely unmeasured common causes), "
+    "'reasoning' (a paragraph of 3-5 full sentences explaining WHY this causal structure is plausible "
+    "for this dataset: what the outcome represents, why the chosen treatments are actionable levers, "
+    "which mechanisms the main edges encode, and what the biggest structural uncertainty is), and "
     "'notes' (one short paragraph of caveats). Use only provided variable names in edges and "
     "candidate lists. Do not invent variables."
 )
@@ -187,5 +191,6 @@ def suggest_model_with_openai(
         "treatment_candidates": _clean_name_list("treatment_candidates"),
         "outcome_candidates": _clean_name_list("outcome_candidates"),
         "unobserved_confounders": unobserved[:8],
+        "reasoning": str(payload.get("reasoning", "")).strip(),
         "notes": str(payload.get("notes", "")).strip(),
     }

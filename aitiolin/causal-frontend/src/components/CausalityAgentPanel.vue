@@ -30,7 +30,10 @@
     </div>
 
     <p v-if="!graphId" class="agent-hint">Upload a dataset to enable the agent.</p>
-    <p v-else-if="busy" class="agent-hint">{{ busyLabel }}</p>
+    <div v-else-if="busy" class="running-banner" role="status">
+      <span class="spinner" aria-hidden="true"></span>
+      {{ busyLabel }}
+    </div>
 
     <template v-if="profile">
       <div class="summary-grid">
@@ -185,6 +188,11 @@
           {{ modelSuggestion.llm_used ? "Drafted by the LLM and statistically verified against the dataset." : "Drafted from statistical heuristics (no LLM key configured)." }}
         </p>
 
+        <div v-if="modelSuggestion.reasoning" class="reasoning-box">
+          <h5 class="reasoning-title">Why this model</h5>
+          <p class="reasoning-text">{{ modelSuggestion.reasoning }}</p>
+        </div>
+
         <ul v-if="modelSuggestion.notes?.length" class="issue-list">
           <li v-for="(note, index) in modelSuggestion.notes" :key="`note-${index}`">{{ note }}</li>
         </ul>
@@ -248,7 +256,15 @@
           >
             4. Run estimation
           </button>
-          <span class="agent-hint">The suggested model is already drawn on the canvas - modify it there. "Run estimation" uses the same pipeline as Controls' Run Inference, filling in the agent's roles/estimator where you have not chosen your own.</span>
+          <button
+            class="panel-action primary"
+            type="button"
+            :disabled="busy"
+            @click="$emit('compare-models')"
+          >
+            5. Compare competing models
+          </button>
+          <span class="agent-hint">The suggested model is already drawn on the canvas - modify it there. "Run estimation" uses the same pipeline as Controls' Run Inference; "Compare competing models" re-estimates the effect under alternative graph structures to test how model-dependent the result is.</span>
         </div>
       </div>
     </template>
@@ -281,15 +297,16 @@
               <p class="estimation-value">{{ interpretEffect(estimation.effect) }}</p>
             </article>
           </div>
-          <p class="estimation-line">
-            Causal effect of <strong>{{ estimation.treatmentName }}</strong> on
-            <strong>{{ estimation.outcomeName }}</strong>.
-          </p>
+          <div class="explanation-box">
+            <h5 class="reasoning-title">What this means</h5>
+            <p v-for="(sentence, index) in estimationExplanation" :key="`exp-${index}`" class="reasoning-text">
+              {{ sentence }}
+            </p>
+          </div>
           <p v-if="estimation.warning" class="estimation-warning">{{ estimation.warning }}</p>
           <p class="agent-hint">
             The full result (identification summary with all estimands, graph image, raw payload)
-            is in the Inference Result panel below - identical to a run without the agent. Use the
-            Robustness Dashboard to pressure-test this number before acting on it.
+            is in the Inference Result panel below - identical to a run without the agent.
           </p>
         </template>
 
@@ -301,13 +318,38 @@
         </template>
       </div>
     </template>
+
+    <template v-if="comparison">
+      <div :class="['stage-block', 'comparison-block', `comparison-${comparison.stability?.verdict || 'unknown'}`]">
+        <h4 class="stage-title">Competing-model comparison</h4>
+        <p class="reasoning-text comparison-summary">{{ comparison.stability?.summary }}</p>
+
+        <div class="comparison-grid">
+          <article v-for="model in comparison.models" :key="model.key" class="assessment-card">
+            <h5>{{ model.name }}</h5>
+            <p v-if="model.estimated_effect !== null && model.estimated_effect !== undefined" class="comparison-effect">
+              {{ formatEffectValue(model.estimated_effect) }}
+            </p>
+            <p v-else class="comparison-error">{{ model.error || "No estimate." }}</p>
+            <p v-if="model.method_name" class="candidate-reason">{{ methodLabel(model.method_name) }}</p>
+            <p class="candidate-reason">{{ model.description }}</p>
+            <details class="agent-details">
+              <summary>Edges ({{ model.edges?.length || 0 }})</summary>
+              <ul class="issue-list">
+                <li v-for="edge in model.edges" :key="`${model.key}-${edge}`">{{ edge }}</li>
+              </ul>
+            </details>
+          </article>
+        </div>
+      </div>
+    </template>
   </section>
 </template>
 
 <script setup>
 import { computed, ref, watch } from "vue"
 
-import { formatEffectValue, interpretEffect, methodLabel } from "../composables/useInferenceFormatting"
+import { buildInterpretation, formatEffectValue, interpretEffect, methodLabel } from "../composables/useInferenceFormatting"
 
 const props = defineProps({
   graphId: {
@@ -338,6 +380,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  comparison: {
+    type: Object,
+    default: null,
+  },
   busy: {
     type: Boolean,
     default: false,
@@ -355,6 +401,7 @@ defineEmits([
   "suggest-model",
   "adopt-model",
   "run-estimation",
+  "compare-models",
   "clear",
 ])
 
@@ -387,6 +434,19 @@ const methodOverride = computed(
     Boolean(props.selectedMethod) &&
     props.selectedMethod !== props.modelSuggestion?.recommended_estimator?.method_name,
 )
+
+const estimationExplanation = computed(() => {
+  if (props.estimation?.status !== "success") {
+    return []
+  }
+  return buildInterpretation({
+    effect: props.estimation.effect,
+    treatmentName: props.estimation.treatmentName,
+    outcomeName: props.estimation.outcomeName,
+    methodName: props.estimation.method,
+    adjustmentSet: props.estimation.adjustmentSet || [],
+  })
+})
 
 function toggleStep(stepId) {
   const next = new Set(selectedStepIds.value)
@@ -498,6 +558,35 @@ function formatNumber(value) {
 .panel-action:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.running-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: agent-spin 0.8s linear infinite;
+}
+
+@keyframes agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .panel-action.ghost {
@@ -663,6 +752,92 @@ function formatNumber(value) {
 
 .override-note {
   color: #7c3aed;
+}
+
+.reasoning-box,
+.explanation-box {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid #7c3aed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--color-background);
+}
+
+.explanation-box {
+  border-left-color: #059669;
+  background: white;
+}
+
+.reasoning-title {
+  margin: 0 0 6px;
+  color: var(--color-heading);
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.reasoning-text {
+  margin: 0 0 6px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.reasoning-text:last-child {
+  margin-bottom: 0;
+}
+
+.comparison-block {
+  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  padding: 12px;
+}
+
+.comparison-stable {
+  border-color: #059669;
+  background: #ecfdf5;
+}
+
+.comparison-moderate {
+  border-color: #d97706;
+  background: #fffbeb;
+}
+
+.comparison-unstable {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.comparison-summary {
+  font-weight: 500;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.comparison-grid .assessment-card {
+  background: white;
+}
+
+.comparison-effect {
+  margin: 0 0 4px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.comparison-error {
+  margin: 0 0 4px;
+  color: #dc2626;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 900px) {
+  .comparison-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .estimation-block {

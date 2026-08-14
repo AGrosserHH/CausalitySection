@@ -13,6 +13,7 @@ from .agent_service import (
     apply_cleaning_plan,
     build_profile_summary_for_prompt,
     check_identifiability,
+    compare_model_variants,
     profile_data_frame,
     recommend_estimator,
     suggest_causal_model,
@@ -23,6 +24,8 @@ from .openai_service import suggest_edges_with_openai, suggest_model_with_openai
 from .serializers import (
     AgentApplyCleaningRequestSerializer,
     AgentApplyCleaningResponseSerializer,
+    AgentCompareModelsRequestSerializer,
+    AgentCompareModelsResponseSerializer,
     AgentEstimatePlanRequestSerializer,
     AgentEstimatePlanResponseSerializer,
     AgentProfileRequestSerializer,
@@ -1247,5 +1250,61 @@ def agent_estimate_plan(request):
             "recommended_estimator": recommended_estimator,
         }
     )
+    response_serializer.is_valid(raise_exception=True)
+    return Response(response_serializer.data, status=200)
+
+
+@api_view(["POST"])
+def agent_compare_models(request):
+    """Estimate the effect under competing DAG variants derived from the canvas graph
+    and report how stable the estimate is across them."""
+    serializer = AgentCompareModelsRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": _first_error(serializer.errors)}, status=400)
+
+    graph_id = serializer.validated_data["graph_id"]
+    treatment_id = serializer.validated_data["treatment"]
+    outcome_id = serializer.validated_data["outcome"]
+    requested_method = serializer.validated_data.get("method_name") or None
+
+    try:
+        graph = CausalGraph.objects.get(id=graph_id)
+    except CausalGraph.DoesNotExist:
+        return Response({"error": "Graph not found."}, status=404)
+
+    data_frame, _dataset_source, error_response = _read_effective_dataframe(graph)
+    if error_response is not None:
+        return error_response
+
+    try:
+        treatment_var = Variable.objects.get(id=treatment_id, graph=graph)
+        outcome_var = Variable.objects.get(id=outcome_id, graph=graph)
+    except Variable.DoesNotExist:
+        return Response(
+            {"error": "Treatment or outcome variable was not found in the graph."},
+            status=400,
+        )
+
+    edges = CausalEdge.objects.filter(graph_id=graph_id)
+    if not edges.exists():
+        return Response({"error": "No causal graph found for the given graph_id."}, status=404)
+
+    edge_list = [(edge.source.name, edge.target.name) for edge in edges]
+    processed = preprocess_data_frame_for_causal(data_frame)
+    processed = normalize_binary_outcome(processed, outcome_var.name)
+
+    try:
+        result = compare_model_variants(
+            processed,
+            edge_list,
+            treatment_var.name,
+            outcome_var.name,
+            requested_method,
+        )
+    except Exception as exc:
+        logger.exception("Model comparison failed")
+        return Response({"error": f"Model comparison failed: {exc}"}, status=400)
+
+    response_serializer = AgentCompareModelsResponseSerializer(data=result)
     response_serializer.is_valid(raise_exception=True)
     return Response(response_serializer.data, status=200)

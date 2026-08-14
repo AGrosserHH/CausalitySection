@@ -121,6 +121,11 @@ export function useCausalApi(httpClient = axios) {
     return response.data
   }
 
+  async function agentCompareModels(payload) {
+    const response = await httpClient.post("/api/agent/compare_models/", payload)
+    return response.data
+  }
+
   return {
     uploadCsv,
     saveGraph,
@@ -138,6 +143,7 @@ export function useCausalApi(httpClient = axios) {
     agentApplyCleaning,
     agentSuggestModel,
     agentEstimatePlan,
+    agentCompareModels,
     getErrorMessage,
   }
 }

@@ -660,22 +660,52 @@ def recommend_estimator(
         treatment_name in data_frame.columns and _is_binary_column(data_frame[treatment_name])
     )
 
+    adjustment_text = (
+        f"the graph requires adjusting for {', '.join(adjustment_set)}"
+        if adjustment_set
+        else "the graph requires no adjustment set"
+    )
+
     if treatment_is_binary and adjustment_set:
         if row_count > 20000:
             method_name = "backdoor.propensity_score_weighting"
             rationale = (
-                "Binary treatment with confounders to adjust for; weighting chosen over matching "
-                f"because the dataset is large ({row_count} rows)."
+                f"The treatment '{treatment_name}' is binary and {adjustment_text}, so a propensity-score "
+                "method is appropriate to balance treated and untreated groups on those confounders. "
+                f"Weighting was chosen over matching because with {row_count} rows, pairwise matching "
+                "becomes memory-intensive while inverse-probability weighting scales linearly. "
+                "If the estimated propensities are extreme (near 0 or 1), consider trimming or "
+                "falling back to linear regression."
             )
         else:
             method_name = "backdoor.propensity_score_matching"
-            rationale = "Binary treatment with confounders to adjust for; matching balances the groups directly."
+            rationale = (
+                f"The treatment '{treatment_name}' is binary and {adjustment_text}, so propensity-score "
+                "matching is a natural fit: it pairs each treated unit with a statistically similar "
+                "untreated unit, making the comparison groups directly interpretable. "
+                f"With {row_count} rows the matching step is computationally comfortable. "
+                "Compare against linear regression in the Robustness Dashboard - agreement between the "
+                "two strengthens the conclusion."
+            )
     elif treatment_is_binary:
         method_name = "backdoor.linear_regression"
-        rationale = "Binary treatment with no adjustment set required; regression is the simplest consistent choice."
+        rationale = (
+            f"The treatment '{treatment_name}' is binary, but {adjustment_text}, so there are no "
+            "confounders to balance and a simple regression of the outcome on the treatment already "
+            "yields a consistent estimate. "
+            "Propensity-score methods would add complexity without adding validity here. "
+            "If you believe unmeasured confounders exist, add them to the graph and the recommendation "
+            "will update."
+        )
     else:
         method_name = "backdoor.linear_regression"
-        rationale = "Continuous (or multi-valued) treatment; propensity methods need a binary treatment."
+        rationale = (
+            f"The treatment '{treatment_name}' takes more than two values (continuous or multi-valued), "
+            "which rules out propensity-score methods since they require a binary treatment. "
+            f"Linear regression handles graded treatments naturally and {adjustment_text}. "
+            "The estimate then reads as the expected change in the outcome per one-unit increase in "
+            "the treatment, holding the adjustment variables fixed."
+        )
 
     return {
         "method_name": method_name,
@@ -753,7 +783,9 @@ def suggest_causal_model(
     heuristic_treatments, heuristic_outcomes = heuristic_role_candidates(data_frame, profile)
 
     llm_used = llm_suggestion is not None
+    reasoning = ""
     if llm_used:
+        reasoning = str(llm_suggestion.get("reasoning", "")).strip()
         proposed_edges = llm_suggestion.get("edges", [])
         valid_names = set(str(name) for name in data_frame.columns)
         treatment_candidates = [
@@ -782,6 +814,29 @@ def suggest_causal_model(
         notes.append(
             "No LLM available: edges come from pairwise associations and edge directions are heuristic."
         )
+        reasoning_sentences = []
+        if outcome_candidates:
+            reasoning_sentences.append(
+                f"'{outcome_candidates[0]['name']}' was selected as the outcome because "
+                f"{outcome_candidates[0]['reason'].rstrip('.').lower()}."
+            )
+        if treatment_candidates:
+            reasoning_sentences.append(
+                f"'{treatment_candidates[0]['name']}' leads the treatment candidates because "
+                f"{treatment_candidates[0]['reason'].rstrip('.').lower()}, which makes it a lever "
+                "one could realistically intervene on."
+            )
+        reasoning_sentences.append(
+            "The proposed edges connect the variable pairs with the strongest statistical "
+            "associations in this dataset; because correlation alone cannot determine direction, "
+            "each arrow points toward the outcome where possible and otherwise follows column "
+            "order, so every direction should be reviewed against domain knowledge."
+        )
+        reasoning_sentences.append(
+            "No language model was available for this draft, so the structure reflects the data "
+            "alone and encodes no domain understanding of the underlying mechanisms."
+        )
+        reasoning = " ".join(reasoning_sentences)
 
     processed = preprocess_data_frame_for_causal(data_frame)
     verified_edges = verify_proposed_edges(processed, proposed_edges)
@@ -823,5 +878,169 @@ def suggest_causal_model(
         "missing_confounder_hypotheses": hypotheses["missing_confounder_hypotheses"],
         "summary": summarize_graph_copilot(verified_edges),
         "llm_used": llm_used,
+        "reasoning": reasoning,
         "notes": notes,
     }
+
+
+def build_model_variants(
+    edge_list: list[tuple[str, str]], treatment_name: str, outcome_name: str
+) -> list[dict[str, Any]]:
+    """Derive 2-3 plausible DAG variants from the canvas graph for a stability check."""
+    canvas_edges = list(dict.fromkeys(edge_list))
+    variants: list[dict[str, Any]] = [
+        {
+            "key": "canvas",
+            "name": "Canvas model",
+            "description": "The graph exactly as drawn on the canvas - your working hypothesis.",
+            "edges": canvas_edges,
+        }
+    ]
+
+    minimal_edges = [(source, target) for source, target in canvas_edges if target == outcome_name]
+    if (treatment_name, outcome_name) not in minimal_edges:
+        minimal_edges.append((treatment_name, outcome_name))
+    variants.append(
+        {
+            "key": "minimal",
+            "name": "Minimal direct-effects model",
+            "description": (
+                "Keeps only direct influences on the outcome and drops all upstream structure. "
+                "If the estimate barely changes, the upstream part of your graph does not drive the result."
+            ),
+            "edges": list(dict.fromkeys(minimal_edges)),
+        }
+    )
+
+    confounded_edges = list(canvas_edges)
+    for source, target in canvas_edges:
+        if target == outcome_name and source not in (treatment_name, outcome_name):
+            candidate = (source, treatment_name)
+            reverse = (treatment_name, source)
+            if candidate not in confounded_edges and reverse not in confounded_edges:
+                confounded_edges.append(candidate)
+    variants.append(
+        {
+            "key": "confounded",
+            "name": "Confounder-stressed model",
+            "description": (
+                "Assumes every direct cause of the outcome also influences the treatment - a "
+                "worst-case confounding scenario that forces maximal adjustment. A stable estimate "
+                "here is strong evidence the effect is not an artifact of the chosen structure."
+            ),
+            "edges": list(dict.fromkeys(confounded_edges)),
+        }
+    )
+
+    seen_signatures: set[tuple] = set()
+    unique_variants = []
+    for variant in variants:
+        _, directed_graph, _ = build_dot_graph(variant["edges"])
+        if not nx.is_directed_acyclic_graph(directed_graph):
+            continue
+        signature = tuple(sorted(variant["edges"]))
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        unique_variants.append(variant)
+
+    return unique_variants
+
+
+@suppress_numeric_estimation_warnings
+def compare_model_variants(
+    data_frame: pd.DataFrame,
+    edge_list: list[tuple[str, str]],
+    treatment_name: str,
+    outcome_name: str,
+    requested_method: str | None = None,
+) -> dict[str, Any]:
+    """Estimate the effect under competing DAG variants and judge stability."""
+    from .services import estimate_effect
+
+    variants = build_model_variants(edge_list, treatment_name, outcome_name)
+    models: list[dict[str, Any]] = []
+
+    for variant in variants:
+        dot_graph, _, node_names = build_dot_graph(variant["edges"])
+        entry: dict[str, Any] = {
+            "key": variant["key"],
+            "name": variant["name"],
+            "description": variant["description"],
+            "edges": [f"{source} -> {target}" for source, target in variant["edges"]],
+            "estimated_effect": None,
+            "method_name": "",
+            "error": "",
+        }
+        if treatment_name not in node_names or outcome_name not in node_names:
+            entry["error"] = "Treatment or outcome is not connected in this variant."
+            models.append(entry)
+            continue
+        try:
+            result = estimate_effect(
+                data_frame, treatment_name, outcome_name, dot_graph, requested_method
+            )
+            entry["estimated_effect"] = float(result["estimated_effect"])
+            entry["method_name"] = result["method_name"]
+        except Exception as exc:
+            entry["error"] = str(exc)
+        models.append(entry)
+
+    effects = [
+        entry["estimated_effect"] for entry in models if entry["estimated_effect"] is not None
+    ]
+    stability: dict[str, Any] = {
+        "verdict": "unknown",
+        "spread": None,
+        "relative_spread": None,
+        "same_sign": None,
+        "summary": "",
+    }
+
+    if len(effects) == 0:
+        stability["summary"] = (
+            "No model variant produced an estimate, so stability could not be assessed. "
+            "Check the per-model errors above."
+        )
+    elif len(effects) == 1:
+        stability["verdict"] = "insufficient"
+        stability["summary"] = (
+            "Only one variant produced an estimate, so the effect's sensitivity to model choice "
+            "could not be assessed. Treat the single number with corresponding caution."
+        )
+    else:
+        spread = max(effects) - min(effects)
+        max_abs = max(abs(value) for value in effects)
+        relative_spread = spread / max_abs if max_abs > 0 else 0.0
+        same_sign = all(value >= 0 for value in effects) or all(value <= 0 for value in effects)
+        stability["spread"] = round(spread, 6)
+        stability["relative_spread"] = round(relative_spread, 4)
+        stability["same_sign"] = same_sign
+
+        effects_text = ", ".join(f"{value:.4f}" for value in effects)
+        if same_sign and relative_spread <= 0.35:
+            stability["verdict"] = "stable"
+            stability["summary"] = (
+                f"The estimated effect is stable across {len(effects)} competing model structures "
+                f"({effects_text}): every variant agrees on the direction and the estimates differ by "
+                f"at most {relative_spread:.0%} of the largest magnitude. This is meaningful evidence "
+                "that the conclusion does not hinge on the exact graph you drew."
+            )
+        elif same_sign:
+            stability["verdict"] = "moderate"
+            stability["summary"] = (
+                f"All {len(effects)} model variants agree on the direction of the effect "
+                f"({effects_text}), but the magnitude varies by {relative_spread:.0%}. The sign of the "
+                "conclusion is trustworthy; quote the size of the effect with a caveat about model "
+                "dependence."
+            )
+        else:
+            stability["verdict"] = "unstable"
+            stability["summary"] = (
+                f"The estimated effect changes sign across model structures ({effects_text}), meaning "
+                "the conclusion depends critically on which causal graph is assumed. Do not act on "
+                "this estimate before resolving the structural uncertainty - review the disputed "
+                "edges and consider collecting data on the suspected confounders."
+            )
+
+    return {"models": models, "stability": stability}

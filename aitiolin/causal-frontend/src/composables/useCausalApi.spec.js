@@ -96,6 +96,18 @@ describe("useCausalApi", () => {
     expect(response.payload).toEqual({ graph_id: 7, treatment: 1, outcome: 2 })
   })
 
+  it("calls agent compare models endpoint", async () => {
+    const mockClient = {
+      post: async (url, payload) => ({ data: { endpoint: url, payload } }),
+    }
+
+    const api = useCausalApi(mockClient)
+    const response = await api.agentCompareModels({ graph_id: 7, treatment: 1, outcome: 2 })
+
+    expect(response.endpoint).toBe("/api/agent/compare_models/")
+    expect(response.payload.graph_id).toBe(7)
+  })
+
   it("calls agent suggest model endpoint", async () => {
     const mockClient = {
       post: async (url, payload) => ({ data: { endpoint: url, payload } }),

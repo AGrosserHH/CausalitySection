@@ -6,13 +6,23 @@
         <p class="panel-subtitle">Cross-estimator agreement, refuters, and sensitivity curves.</p>
       </div>
       <div class="panel-actions">
-        <button class="panel-action primary" type="button" @click="$emit('run')">Run checks</button>
-        <button class="panel-action" type="button" :disabled="!result" @click="$emit('export-json')">Export JSON</button>
-        <button class="panel-action" type="button" :disabled="!result" @click="$emit('export-csv')">Export CSV</button>
+        <button class="panel-action primary" type="button" :disabled="running" @click="$emit('run')">
+          <span v-if="running" class="spinner" aria-hidden="true"></span>
+          {{ running ? "Running checks..." : "Run checks" }}
+        </button>
+        <button class="panel-action" type="button" :disabled="!result || running" @click="$emit('export-json')">Export JSON</button>
+        <button class="panel-action" type="button" :disabled="!result || running" @click="$emit('export-csv')">Export CSV</button>
       </div>
     </div>
 
-    <template v-if="result">
+    <div v-if="running" class="running-banner" role="status">
+      <span class="spinner" aria-hidden="true"></span>
+      Robustness analysis is running: comparing estimators, applying refuters, and sweeping
+      confounder sensitivity. On larger datasets this can take a minute - the results will appear
+      here when finished.
+    </div>
+
+    <template v-if="result && !running">
       <div class="metric-grid">
         <article class="metric-card">
           <span class="metric-label">Baseline method</span>
@@ -90,6 +100,10 @@ defineProps({
     type: Object,
     default: null,
   },
+  running: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 defineEmits(["run", "export-json", "export-csv"])
@@ -133,6 +147,41 @@ function formatPercent(value) {
 .panel-title {
   margin: 0;
   color: var(--color-heading);
+}
+
+.running-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: robustness-spin 0.8s linear infinite;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+.running-banner .spinner {
+  margin-right: 0;
+}
+
+@keyframes robustness-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .panel-subtitle {

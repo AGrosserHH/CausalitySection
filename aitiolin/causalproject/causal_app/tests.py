@@ -21,12 +21,19 @@ class _FakeIdentifiedEstimand:
 		return []
 
 
+class _FakeEstimate:
+	value = 1.5
+
+
 class _FakeCausalModel:
 	def __init__(self, *args, **kwargs):
 		pass
 
 	def identify_effect(self):
 		return _FakeIdentifiedEstimand()
+
+	def estimate_effect(self, identified_estimand, method_name=None, **kwargs):
+		return _FakeEstimate()
 
 
 class CausalApiTests(APITestCase):
@@ -489,6 +496,47 @@ class CausalApiTests(APITestCase):
 		self.assertIn("Churn", outcome_names)
 		self.assertIn("recommended_estimator", response.data)
 		self.assertIn("identification", response.data)
+		self.assertTrue(response.data["reasoning"])
+		self.assertGreater(len(response.data["reasoning"].split(". ")), 1)
+
+	@patch("causal_app.services.get_causal_model_class", return_value=_FakeCausalModel)
+	def test_agent_compare_models_reports_stability(self, _mock_model_class):
+		response_data = self.upload_sample_csv()
+		graph_id = response_data["graph_id"]
+		variable_by_name = {item["name"]: item["id"] for item in response_data["variables"]}
+
+		self.client.post(
+			"/api/save_graph/",
+			{
+				"graph_id": graph_id,
+				"name": "Comparison Graph",
+				"edges": [
+					{"source": "A", "target": "B", "directed": True},
+					{"source": "C", "target": "B", "directed": True},
+					{"source": "C", "target": "A", "directed": True},
+				],
+			},
+			format="json",
+		)
+
+		response = self.client.post(
+			"/api/agent/compare_models/",
+			{
+				"graph_id": graph_id,
+				"treatment": variable_by_name["A"],
+				"outcome": variable_by_name["B"],
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertGreaterEqual(len(response.data["models"]), 2)
+		model_names = [item["name"] for item in response.data["models"]]
+		self.assertIn("Canvas model", model_names)
+		effects = [item["estimated_effect"] for item in response.data["models"]]
+		self.assertTrue(all(value == 1.5 for value in effects))
+		self.assertEqual(response.data["stability"]["verdict"], "stable")
+		self.assertIn("stable", response.data["stability"]["summary"])
 
 	@patch(
 		"causal_app.views.suggest_model_with_openai",

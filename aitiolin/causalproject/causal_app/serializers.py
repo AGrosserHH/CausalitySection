@@ -312,6 +312,7 @@ class AgentSuggestModelResponseSerializer(serializers.Serializer):
     missing_confounder_hypotheses = serializers.ListField(child=serializers.CharField(), default=list)
     summary = serializers.DictField(required=False, default=dict)
     llm_used = serializers.BooleanField(default=False)
+    reasoning = serializers.CharField(required=False, allow_blank=True, default="")
     notes = serializers.ListField(child=serializers.CharField(), default=list)
 
 
@@ -324,6 +325,18 @@ class AgentEstimatePlanRequestSerializer(serializers.Serializer):
 class AgentEstimatePlanResponseSerializer(serializers.Serializer):
     identification = serializers.DictField()
     recommended_estimator = serializers.DictField()
+
+
+class AgentCompareModelsRequestSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    treatment = serializers.IntegerField()
+    outcome = serializers.IntegerField()
+    method_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+
+
+class AgentCompareModelsResponseSerializer(serializers.Serializer):
+    models = serializers.ListField(child=serializers.DictField(), default=list)
+    stability = serializers.DictField(required=False, default=dict)
 
 
 class TimeSeriesAnalysisRequestSerializer(serializers.Serializer):

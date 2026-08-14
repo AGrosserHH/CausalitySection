@@ -98,6 +98,7 @@ npm run build
 | POST | `/api/agent/apply_cleaning/` | Causality Agent: apply accepted steps, persist a cleaned dataset copy |
 | POST | `/api/agent/suggest_model/` | Causality Agent: suggested causal model (edges + roles + estimator), LLM-assisted when `OPENAI_API_KEY` is set |
 | POST | `/api/agent/estimate_plan/` | Causality Agent: re-evaluate identifiability + recommended estimator against the currently saved canvas graph |
+| POST | `/api/agent/compare_models/` | Causality Agent: estimate the effect under competing DAG variants (canvas / minimal / confounder-stressed) and report a stability verdict |
 
 ## Notes
 

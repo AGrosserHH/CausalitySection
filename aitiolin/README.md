@@ -103,7 +103,8 @@ npm run build
 ## Example Datasets
 
 - `../Churn.csv` (repository root) - the built-in telco churn example.
-- `../examples/worldbank/` - a country-year panel on health expenditure vs. child mortality (World Bank / Our World in Data), designed to exercise confounding, identification, robustness, competing-model comparison, and Time Series mode. See its own README for the causal question, DAG, and a suggested walkthrough.
+- `../examples/churn/` - a complete worked analysis of Churn.csv (does contract commitment causally reduce churn?), with a PDF report and walkthrough: an example of an effect that *survives* adjustment and refutation (-14.2pp per contract tier after adjusting for tenure; the naive estimate overstates it by ~58%).
+- `../examples/worldbank/` - a country-year panel on health expenditure vs. child mortality (World Bank / Our World in Data), with a PDF report and walkthrough: the counterpart example where adjustment reveals the raw correlation to be essentially a wealth effect (no statistically detectable causal effect).
 
 ## Notes
 

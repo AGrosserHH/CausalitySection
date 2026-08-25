@@ -39,7 +39,14 @@ def suppress_numeric_estimation_warnings(func):
 
 
 def normalize_binary_outcome(data_frame: pd.DataFrame, outcome_name: str) -> pd.DataFrame:
-    outcome_values = sorted(data_frame[outcome_name].dropna().unique().tolist())
+    unique_values = data_frame[outcome_name].dropna().unique()
+    if len(unique_values) > 2:
+        # Continuous or multi-valued outcome: collapsing it to 0/1 around the mode
+        # would destroy the signal (e.g. a 186-value mortality rate becomes 185x"1"
+        # and 1x"0"). Only genuinely binary outcomes are normalized.
+        return data_frame
+
+    outcome_values = sorted(unique_values.tolist())
     if outcome_values == [0, 1]:
         return data_frame
 
@@ -656,6 +663,11 @@ def _extract_estimate_value(result: Any) -> float | None:
 
 
 def _format_refutation_result(result: Any, baseline_value: float | None = None) -> dict[str, Any]:
+    # Some refuters (e.g. dummy_outcome) return a list of refutation objects;
+    # unwrap it so the summary is readable text instead of a Python list repr.
+    if isinstance(result, (list, tuple)):
+        result = result[0] if result else None
+
     if result is None:
         return {"status": "unavailable", "summary": "No refutation output."}
 
@@ -751,27 +763,55 @@ def run_refutations_and_sensitivity(
                 "delta": None,
             }
 
+    # Partial-R2 (Cinelli-Hazlett) sensitivity needs an observed covariate to
+    # benchmark the hypothetical unobserved confounder against; without one the
+    # DoWhy call crashes on unset strength parameters. Use the strongest
+    # available backdoor variable, and back off to weaker assumed fractions when
+    # the benchmark implies an impossible partial R2 (>= 1).
     sensitivity: dict[str, dict[str, Any]] = {}
-    sensitivity_map = {
-        "partial_r2": "linear-partial-R2",
-    }
-    for key, simulation_method in sensitivity_map.items():
+    try:
+        backdoor_variables = list(identified_estimand.get_backdoor_variables() or [])
+    except Exception:
+        backdoor_variables = []
+
+    if not backdoor_variables:
+        sensitivity["partial_r2"] = {
+            "status": "unavailable",
+            "summary": (
+                "Partial-R2 sensitivity needs at least one observed adjustment variable "
+                "to benchmark against; this graph has none."
+            ),
+            "p_value": None,
+            "estimated_effect": None,
+            "delta": None,
+        }
+        return refutations, sensitivity
+
+    last_error: Exception | None = None
+    for fractions in ([0.1, 0.2, 0.3], [0.02, 0.05, 0.1], [0.002, 0.005, 0.01]):
         try:
             output = model.refute_estimate(
                 identified_estimand,
                 baseline_estimate,
                 method_name="add_unobserved_common_cause",
-                simulation_method=simulation_method,
+                simulation_method="linear-partial-R2",
+                benchmark_common_causes=backdoor_variables[:1],
+                effect_fraction_on_treatment=fractions,
             )
-            sensitivity[key] = _format_refutation_result(output, baseline_value)
+            sensitivity["partial_r2"] = _format_refutation_result(output, baseline_value)
+            last_error = None
+            break
         except Exception as exc:
-            sensitivity[key] = {
-                "status": "error",
-                "summary": str(exc),
-                "p_value": None,
-                "estimated_effect": None,
-                "delta": None,
-            }
+            last_error = exc
+
+    if last_error is not None:
+        sensitivity["partial_r2"] = {
+            "status": "error",
+            "summary": str(last_error),
+            "p_value": None,
+            "estimated_effect": None,
+            "delta": None,
+        }
 
     return refutations, sensitivity
 

@@ -139,6 +139,42 @@ class CausalApiTests(APITestCase):
 		response = self.client.post("/api/causal_inference/", {}, format="json")
 		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+	def test_normalize_binary_outcome_preserves_continuous_outcomes(self):
+		import pandas as pd
+
+		from .services import normalize_binary_outcome
+
+		continuous = pd.DataFrame({"y": [1.5, 2.7, 3.1, 4.9, 5.2, 6.8]})
+		result = normalize_binary_outcome(continuous.copy(), "y")
+		self.assertEqual(result["y"].tolist(), continuous["y"].tolist())
+
+		binary_nonstandard = pd.DataFrame({"y": [5, 5, 9, 5, 9, 5]})
+		result = normalize_binary_outcome(binary_nonstandard.copy(), "y")
+		self.assertEqual(sorted(result["y"].unique().tolist()), [0, 1])
+		self.assertEqual(result["y"].tolist(), [0, 0, 1, 0, 1, 0])
+
+		already_binary = pd.DataFrame({"y": [0, 1, 1, 0]})
+		result = normalize_binary_outcome(already_binary.copy(), "y")
+		self.assertEqual(result["y"].tolist(), [0, 1, 1, 0])
+
+	def test_format_refutation_result_unwraps_list_output(self):
+		from .services import _format_refutation_result
+
+		class _FakeRefutation:
+			p_value = 0.4
+			new_effect = 1.0
+
+			def __str__(self):
+				return "Refute: readable summary"
+
+		formatted = _format_refutation_result([_FakeRefutation()], baseline_value=2.0)
+		self.assertEqual(formatted["status"], "ok")
+		self.assertIn("readable summary", formatted["summary"])
+		self.assertNotIn("object at 0x", formatted["summary"])
+
+		formatted_empty = _format_refutation_result([], baseline_value=2.0)
+		self.assertEqual(formatted_empty["status"], "unavailable")
+
 	@patch(
 		"causal_app.views.suggest_edges_with_openai",
 		return_value=[

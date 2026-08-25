@@ -1291,7 +1291,6 @@ def agent_compare_models(request):
 
     edge_list = [(edge.source.name, edge.target.name) for edge in edges]
     processed = preprocess_data_frame_for_causal(data_frame)
-    processed = normalize_binary_outcome(processed, outcome_var.name)
 
     try:
         result = compare_model_variants(

@@ -100,6 +100,11 @@ npm run build
 | POST | `/api/agent/estimate_plan/` | Causality Agent: re-evaluate identifiability + recommended estimator against the currently saved canvas graph |
 | POST | `/api/agent/compare_models/` | Causality Agent: estimate the effect under competing DAG variants (canvas / minimal / confounder-stressed) and report a stability verdict |
 
+## Example Datasets
+
+- `../Churn.csv` (repository root) - the built-in telco churn example.
+- `../examples/worldbank/` - a country-year panel on health expenditure vs. child mortality (World Bank / Our World in Data), designed to exercise confounding, identification, robustness, competing-model comparison, and Time Series mode. See its own README for the causal question, DAG, and a suggested walkthrough.
+
 ## Notes
 
 - Uploaded datasets and generated graph images are written under `causalproject/media/`.

@@ -1,4 +1,4 @@
-# aitiol
+# aitiolin
 
 Full-stack causal graph builder with:
 

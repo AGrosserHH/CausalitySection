@@ -59,6 +59,7 @@ from .services import (
     analyze_time_series_graph,
     build_admissibility_summary,
     build_dot_graph,
+    compute_confounder_sensitivity_sweep,
     compute_root_cause_attributions,
     compute_simple_counterfactual,
     derive_graph_hypotheses,
@@ -828,11 +829,33 @@ def robustness_dashboard(request):
             "partial_r2": {"status": "error", "summary": "No baseline estimate available.", "p_value": None},
         }
 
+    try:
+        adjustment_set = list(identified_estimand.get_backdoor_variables() or [])
+    except Exception:
+        adjustment_set = []
+    sweep = compute_confounder_sensitivity_sweep(
+        data_frame,
+        treatment_var.name,
+        outcome_var.name,
+        adjustment_set,
+        baseline_value,
+    )
+    sensitivity["confounder_sweep"] = {
+        "status": "ok" if sweep["points"] else "unavailable",
+        "summary": sweep["note"],
+        "p_value": None,
+        "estimated_effect": None,
+        "delta": None,
+        "robustness_value": sweep["robustness_value"],
+        "t_value": sweep["t_value"],
+    }
+
     diagnostics, sensitivity_points, robustness_score = summarize_robustness(
         estimator_comparison,
         refutations,
         sensitivity,
         baseline_value,
+        sensitivity_points=sweep["points"],
     )
 
     response_payload = {

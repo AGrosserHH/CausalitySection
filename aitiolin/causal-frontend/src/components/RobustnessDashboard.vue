@@ -76,6 +76,11 @@
               <strong>{{ key }}</strong>
               <span> | {{ value.status }}</span>
               <span v-if="value.delta !== null && value.delta !== undefined"> | delta {{ formatMetric(value.delta) }}</span>
+              <span v-if="value.robustness_value !== null && value.robustness_value !== undefined">
+                | robustness value {{ formatMetric(value.robustness_value) }}
+                (an unobserved confounder would need to explain {{ formatPercent(value.robustness_value) }} of the
+                residual variance of both treatment and outcome to bring the effect to zero)
+              </span>
             </li>
           </ul>
         </article>

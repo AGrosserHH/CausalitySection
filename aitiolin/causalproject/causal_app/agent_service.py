@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 
 from .services import (
@@ -140,6 +141,24 @@ def profile_data_frame(data_frame: pd.DataFrame) -> dict[str, Any]:
                     upper = q3 + 3.0 * iqr
                     outlier_count = int(((numeric < lower) | (numeric > upper)).sum())
                 column_profile["outlier_count"] = outlier_count
+                skewness = float(numeric.skew()) if len(numeric) > 2 else 0.0
+                column_profile["skewness"] = round(skewness, 4)
+                # |skewness| > 1 is the conventional "highly skewed" threshold; GDP-style
+                # money variables typically sit around 1.5-2 and benefit from logs.
+                if skewness > 1.0 and float(numeric.min()) > 0 and unique_count > 10:
+                    issues.append(
+                        {
+                            "issue_type": "skewed_positive",
+                            "column": str(column),
+                            "severity": "info",
+                            "description": (
+                                f"'{column}' is strongly right-skewed (skewness {skewness:.1f}) and "
+                                "strictly positive - typical of money or population quantities. A "
+                                "linear-in-levels model lets a few extreme values dominate; a log "
+                                "transform makes effects read as elasticities (percent per percent)."
+                            ),
+                        }
+                    )
         elif inferred_type in {"categorical", "boolean"}:
             top_values = non_missing.astype("string").value_counts().head(5)
             column_profile["top_values"] = [
@@ -339,6 +358,13 @@ def suggest_cleaning_plan(profile: dict[str, Any]) -> list[dict[str, Any]]:
                     "(singular design matrix).",
                     "warning", "review",
                 )
+        elif issue_type == "skewed_positive":
+            add_step(
+                "log_transform", column, {"base": "e"},
+                issue.get("description", "")
+                + " Values are replaced by their natural log in place (the variable keeps its name).",
+                "info", "review",
+            )
         elif issue_type == "duplicate_rows":
             add_step(
                 "drop_duplicate_rows", None, {},
@@ -391,7 +417,8 @@ def apply_cleaning_plan(
         "coerce_numeric": 2,
         "normalize_datetime": 3,
         "cap_outliers": 4,
-        "impute_missing": 5,
+        "log_transform": 5,
+        "impute_missing": 6,
     }
     known_steps = [step for step in steps if step.get("step_type") in order]
     known_steps.sort(key=lambda step: order[step["step_type"]])
@@ -449,6 +476,19 @@ def apply_cleaning_plan(
                         detail = f"Capped {capped_count} value(s) in '{column}' to [{lower:.4g}, {upper:.4g}]."
                     else:
                         detail = f"'{column}' has zero IQR; nothing capped."
+            elif step_type == "log_transform":
+                if column not in cleaned.columns:
+                    detail = f"Column '{column}' not found; skipped."
+                else:
+                    numeric = pd.to_numeric(cleaned[column], errors="coerce")
+                    if (numeric.dropna() <= 0).any():
+                        detail = f"'{column}' has non-positive values; log transform skipped."
+                    else:
+                        cleaned[column] = np.log(numeric)
+                        detail = (
+                            f"Replaced '{column}' by its natural log; coefficients involving it now "
+                            "read as elasticities (log-log) or semi-elasticities."
+                        )
             elif step_type == "impute_missing":
                 if column not in cleaned.columns:
                     detail = f"Column '{column}' not found; skipped."

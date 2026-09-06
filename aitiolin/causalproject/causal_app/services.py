@@ -816,11 +816,83 @@ def run_refutations_and_sensitivity(
     return refutations, sensitivity
 
 
+@suppress_numeric_estimation_warnings
+def compute_confounder_sensitivity_sweep(
+    data_frame: pd.DataFrame,
+    treatment_name: str,
+    outcome_name: str,
+    adjustment_set: list[str],
+    baseline_estimate: float | None,
+    strengths: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5),
+) -> dict[str, Any]:
+    """Omitted-variable-bias sensitivity sweep (Cinelli & Hazlett, 2020).
+
+    For a hypothetical unobserved confounder that explains a share ``s`` of the
+    residual variance of BOTH the treatment and the outcome (equal partial R2),
+    the maximal bias of the adjusted estimate is
+
+        |bias| = se(tau) * s * sqrt(df / (1 - s))
+
+    which needs only the standard error and residual degrees of freedom of the
+    adjusted regression of the outcome on the treatment and adjustment set.
+    The robustness value ``rv`` is the confounder strength at which the bias
+    equals the estimate itself (would bring it to zero). Unlike a fixed formula,
+    this is a genuine analysis: it is scale-free and reproduces DoWhy's
+    linear-partial-R2 robustness value when that runs.
+    """
+    result: dict[str, Any] = {"points": [], "robustness_value": None, "t_value": None, "note": ""}
+    if baseline_estimate is None:
+        result["note"] = "No baseline estimate; sensitivity sweep not computed."
+        return result
+
+    try:
+        import statsmodels.api as sm
+
+        columns = [treatment_name] + [name for name in adjustment_set if name in data_frame.columns]
+        frame = data_frame[columns + [outcome_name]].apply(pd.to_numeric, errors="coerce").dropna()
+        if len(frame.index) <= len(columns) + 2:
+            result["note"] = "Too few complete rows to fit the adjusted regression."
+            return result
+        design = sm.add_constant(frame[columns])
+        fit = sm.OLS(frame[outcome_name], design).fit()
+        standard_error = float(fit.bse[treatment_name])
+        degrees_of_freedom = float(fit.df_resid)
+        t_value = float(fit.tvalues[treatment_name])
+    except Exception as exc:
+        result["note"] = f"Sensitivity sweep unavailable: {exc}"
+        return result
+
+    if not np.isfinite(standard_error) or standard_error <= 0 or degrees_of_freedom <= 0:
+        result["note"] = "Degenerate regression (zero standard error); sweep not computed."
+        return result
+
+    sign = 1.0 if baseline_estimate >= 0 else -1.0
+    for strength in strengths:
+        bias = standard_error * strength * float(np.sqrt(degrees_of_freedom / (1.0 - strength)))
+        result["points"].append(
+            {
+                "confounder_strength": float(strength),
+                "adjusted_effect": float(baseline_estimate - sign * bias),
+                "bias": float(bias),
+            }
+        )
+
+    f_squared = (t_value ** 2) / degrees_of_freedom
+    result["robustness_value"] = float(0.5 * (np.sqrt(f_squared ** 2 + 4.0 * f_squared) - f_squared))
+    result["t_value"] = t_value
+    result["note"] = (
+        "Bias bound for an unobserved confounder explaining the given share of residual "
+        "variance of both treatment and outcome (Cinelli & Hazlett 2020)."
+    )
+    return result
+
+
 def summarize_robustness(
     estimator_comparison: list[dict[str, Any]],
     refutations: dict[str, dict[str, Any]],
     sensitivity: dict[str, dict[str, Any]],
     baseline_estimate: float | None,
+    sensitivity_points: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float]:
     valid_estimates = [
         float(item["estimated_effect"])
@@ -860,18 +932,9 @@ def summarize_robustness(
         }
     )
 
-    sensitivity_points: list[dict[str, Any]] = []
-    for strength in [0.1, 0.2, 0.3, 0.4, 0.5]:
-        if baseline_estimate is None:
-            adjusted_effect = None
-        else:
-            adjusted_effect = float(baseline_estimate * (1.0 - 0.35 * strength))
-        sensitivity_points.append(
-            {
-                "confounder_strength": strength,
-                "adjusted_effect": adjusted_effect,
-            }
-        )
+    # The sweep is computed by compute_confounder_sensitivity_sweep from the
+    # adjusted regression; it is never synthesized from a fixed formula here.
+    sensitivity_points = list(sensitivity_points or [])
 
     score_parts = []
     if estimator_spread is not None:

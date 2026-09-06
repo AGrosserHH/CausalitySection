@@ -157,6 +157,57 @@ class CausalApiTests(APITestCase):
 		result = normalize_binary_outcome(already_binary.copy(), "y")
 		self.assertEqual(result["y"].tolist(), [0, 1, 1, 0])
 
+	def test_confounder_sensitivity_sweep_is_a_real_bias_bound(self):
+		import numpy as np
+		import pandas as pd
+
+		from .services import compute_confounder_sensitivity_sweep
+
+		rng = np.random.default_rng(0)
+		n = 400
+		z = rng.normal(size=n)
+		t = 0.8 * z + rng.normal(size=n)
+		y = 2.0 * t + 1.5 * z + rng.normal(size=n)
+		frame = pd.DataFrame({"t": t, "y": y, "z": z})
+
+		sweep = compute_confounder_sensitivity_sweep(frame, "t", "y", ["z"], baseline_estimate=2.0)
+		self.assertEqual(len(sweep["points"]), 5)
+		self.assertGreater(sweep["robustness_value"], 0.5)  # a t-stat this large needs a huge confounder
+		biases = [point["bias"] for point in sweep["points"]]
+		self.assertEqual(biases, sorted(biases))  # bias grows with confounder strength
+		self.assertLess(sweep["points"][0]["adjusted_effect"], 2.0)  # shrinks toward zero
+		# Robustness value: the strength at which the bias bound equals the estimate.
+		rv = sweep["robustness_value"]
+		df = n - 3
+		se = sweep["points"][0]["bias"] / (0.1 * np.sqrt(df / 0.9))
+		self.assertAlmostEqual(se * rv * np.sqrt(df / (1 - rv)), abs(sweep["t_value"]) * se, places=6)
+
+		degenerate = compute_confounder_sensitivity_sweep(frame, "t", "y", ["z"], baseline_estimate=None)
+		self.assertEqual(degenerate["points"], [])
+
+	def test_agent_suggests_log_transform_for_skewed_positive_columns(self):
+		import numpy as np
+
+		from .agent_service import apply_cleaning_plan, profile_data_frame, suggest_cleaning_plan
+		import pandas as pd
+
+		rng = np.random.default_rng(1)
+		frame = pd.DataFrame({
+			"income": np.exp(rng.normal(9.0, 1.2, size=300)),  # log-normal: heavy right tail
+			"score": rng.normal(size=300),
+		})
+		profile = profile_data_frame(frame)
+		skewed = [issue["column"] for issue in profile["issues"] if issue["issue_type"] == "skewed_positive"]
+		self.assertEqual(skewed, ["income"])
+
+		steps = suggest_cleaning_plan(profile)
+		log_steps = [step for step in steps if step["step_type"] == "log_transform"]
+		self.assertEqual([step["column"] for step in log_steps], ["income"])
+
+		cleaned, applied = apply_cleaning_plan(frame, log_steps)
+		self.assertAlmostEqual(float(cleaned["income"].mean()), float(np.log(frame["income"]).mean()))
+		self.assertIn("natural log", applied[0]["detail"])
+
 	def test_format_refutation_result_unwraps_list_output(self):
 		from .services import _format_refutation_result
 

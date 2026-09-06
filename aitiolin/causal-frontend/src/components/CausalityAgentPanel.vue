@@ -464,6 +464,7 @@ const STEP_LABELS = {
   coerce_numeric: "Convert to numeric",
   normalize_datetime: "Normalize datetime",
   cap_outliers: "Cap outliers",
+  log_transform: "Log-transform (in place)",
   impute_missing: "Impute missing values",
 }
 

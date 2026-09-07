@@ -387,7 +387,9 @@ def causal_inference(request):
             dot_graph,
             requested_method,
         )
-        graph_image_url = generate_graph_image(int(graph_id), directed_graph)
+        graph_image_url = generate_graph_image(
+            int(graph_id), directed_graph, treatment_name, outcome_name
+        )
     except ImportError:
         return Response({"error": "DoWhy library is not installed on the server."}, status=500)
     except ValueError as exc:

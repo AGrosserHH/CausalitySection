@@ -281,29 +281,137 @@ def estimate_effect(
     }
 
 
-def generate_graph_image(graph_id: int, graph: nx.DiGraph) -> str:
+def _layered_positions(graph: nx.DiGraph) -> tuple[dict[str, tuple[float, float]], int, int]:
+    """Left-to-right layered layout: column = topological generation, rows ordered
+    by the mean row of each node's parents (a one-pass barycenter heuristic that
+    keeps most arrows short and reduces crossings)."""
+    if nx.is_directed_acyclic_graph(graph):
+        generations = [list(layer) for layer in nx.topological_generations(graph)]
+    else:  # cyclic graphs cannot be layered; fall back to a single column per node
+        generations = [[node] for node in graph.nodes()]
+
+    positions: dict[str, tuple[float, float]] = {}
+    x_gap, y_gap = 3.2, 1.25
+    for column, layer in enumerate(generations):
+        def sort_key(node: str) -> tuple[float, str]:
+            parent_rows = [positions[p][1] for p in graph.predecessors(node) if p in positions]
+            return (-float(np.mean(parent_rows)) if parent_rows else 0.0, node)
+
+        ordered = sorted(layer, key=sort_key)
+        for row, node in enumerate(ordered):
+            positions[node] = (column * x_gap, ((len(ordered) - 1) / 2 - row) * y_gap)
+    max_rows = max(len(layer) for layer in generations) if generations else 1
+    return positions, len(generations), max_rows
+
+
+def draw_dag_figure(
+    graph: nx.DiGraph,
+    image_path: str,
+    treatment_name: str | None = None,
+    outcome_name: str | None = None,
+) -> None:
+    """Render the causal graph as a proper DAG: layered left-to-right, full node
+    labels in boxes, arrowheads that stop at the box border, treatment and outcome
+    highlighted."""
+    positions, n_columns, max_rows = _layered_positions(graph)
+    font_size = 9
+    fig_width = max(6.0, 2.6 * n_columns)
+    fig_height = max(3.5, 0.75 * max_rows + 1.0)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=150)
+    ax.set_xlim(-1.6, 3.2 * max(n_columns - 1, 0) + 1.6)
+    ax.set_ylim(-(max_rows - 1) / 2 * 1.25 - 0.9, (max_rows - 1) / 2 * 1.25 + 0.9)
+    ax.axis("off")
+
+    def half_extent_points(label: str) -> tuple[float, float]:
+        pad = 7.0
+        return 0.5 * len(label) * font_size * 0.62 + pad, 0.5 * font_size * 1.35 + pad
+
+    def shrink_for(source: str, target: str, node: str, radius: float, at_end: bool) -> float:
+        """Distance (in points) from a node's centre to its box border along the
+        arrow's direction, so arrowheads end exactly at the box. For curved
+        (arc3) edges the direction is the arc's tangent at that end, taken from
+        matplotlib's control point: midpoint + radius * (dy, -dx)."""
+        a = ax.transData.transform(positions[source])
+        b = ax.transData.transform(positions[target])
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        control = ((a[0] + b[0]) / 2 + radius * dy, (a[1] + b[1]) / 2 - radius * dx)
+        if at_end:
+            tx, ty = b[0] - control[0], b[1] - control[1]
+        else:
+            tx, ty = control[0] - a[0], control[1] - a[1]
+        norm = float(np.hypot(tx, ty)) or 1.0
+        cos_x, cos_y = abs(tx) / norm, abs(ty) / norm
+        half_w, half_h = half_extent_points(node)
+        candidates = []
+        if cos_x > 1e-6:
+            candidates.append(half_w / cos_x)
+        if cos_y > 1e-6:
+            candidates.append(half_h / cos_y)
+        return min(candidates) if candidates else half_h
+
+    column_of = {node: round(x / 3.2) for node, (x, _) in positions.items()}
+    for index, (source, target) in enumerate(graph.edges()):
+        # Edges that skip layers would run straight through intermediate boxes;
+        # bend them, alternating above/below, in proportion to the layers skipped.
+        span = column_of[target] - column_of[source]
+        same_row = abs(positions[source][1] - positions[target][1]) < 1e-9
+        if span > 1 and same_row:
+            radius = min(0.18 * span, 0.5) * (1 if index % 2 else -1)
+        else:
+            radius = 0.06
+        ax.annotate(
+            "",
+            xy=positions[target],
+            xytext=positions[source],
+            arrowprops=dict(
+                arrowstyle="-|>",
+                color="#64748b",
+                lw=1.3,
+                mutation_scale=16,
+                shrinkA=shrink_for(source, target, source, radius, at_end=False),
+                shrinkB=shrink_for(source, target, target, radius, at_end=True),
+                connectionstyle=f"arc3,rad={radius}",
+            ),
+            zorder=1,
+        )
+
+    for node, (x, y) in positions.items():
+        if node == treatment_name:
+            face, edge = "#fde68a", "#b45309"
+        elif node == outcome_name:
+            face, edge = "#bbf7d0", "#047857"
+        else:
+            face, edge = "#dbeafe", "#1e3a5f"
+        ax.text(
+            x, y, node, ha="center", va="center", fontsize=font_size, zorder=3,
+            bbox=dict(boxstyle="round,pad=0.45", facecolor=face, edgecolor=edge, linewidth=1.2),
+        )
+
+    if treatment_name or outcome_name:
+        legend = []
+        if treatment_name:
+            legend.append(f"treatment: {treatment_name}")
+        if outcome_name:
+            legend.append(f"outcome: {outcome_name}")
+        ax.text(0.0, 1.0, " | ".join(legend), transform=ax.transAxes, fontsize=8,
+                color="#475569", ha="left", va="bottom")
+
+    fig.savefig(image_path, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def generate_graph_image(
+    graph_id: int,
+    graph: nx.DiGraph,
+    treatment_name: str | None = None,
+    outcome_name: str | None = None,
+) -> str:
     graph_directory = os.path.join(settings.MEDIA_ROOT, "causal_graphs")
     os.makedirs(graph_directory, exist_ok=True)
 
     image_name = f"causal_graph_{graph_id}.png"
     image_path = os.path.join(graph_directory, image_name)
-
-    positions = nx.spring_layout(graph)
-    plt.figure(figsize=(6, 4))
-    nx.draw_networkx_nodes(graph, positions, node_size=800, node_color="#a0cbe2")
-    nx.draw_networkx_edges(
-        graph,
-        positions,
-        arrows=True,
-        arrowstyle="->",
-        arrowsize=10,
-        edge_color="gray",
-    )
-    nx.draw_networkx_labels(graph, positions, font_size=8, font_color="black")
-    plt.tight_layout()
-    plt.savefig(image_path)
-    plt.close()
-
+    draw_dag_figure(graph, image_path, treatment_name, outcome_name)
     return settings.MEDIA_URL.rstrip("/") + f"/causal_graphs/{image_name}"
 
 

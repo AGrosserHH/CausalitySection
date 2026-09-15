@@ -28,6 +28,11 @@ def workspace_for(request, create=True, permit_expired_delete=False):
         raise WorkspaceError(str(exc), 401, "session_required") from exc
     workspace = Workspace.objects.filter(pk=key).first()
     if workspace is None and create:
+        # Any well-formed token can open a session, so bound how many unexpired ones may exist.
+        limit = max(1, int(getattr(settings, "P0_MAX_ACTIVE_WORKSPACES", 500)))
+        if Workspace.objects.filter(expires_at__gt=timezone.now()).count() >= limit:
+            raise WorkspaceError("This server has reached its limit of active sessions. Wait for sessions "
+                                 "to expire or run purge_p0_sessions.", 503, "session_limit")
         hours = max(1, min(int(getattr(settings, "P0_RETENTION_HOURS", 24)), 72))
         workspace, _ = Workspace.objects.get_or_create(
             token_hash=key, defaults={"expires_at": timezone.now() + timedelta(hours=hours)})
@@ -137,6 +142,11 @@ def snapshot(graph):
     for label, field in (("raw", graph.data_file), ("cleaned", graph.cleaned_file)):
         if field and field.name:
             path = contained_path(Path(settings.MEDIA_ROOT), field.name)
+            if not path.is_file():
+                # A database restored without its media directory, or manual cleanup, leaves a
+                # dangling reference; fail clearly rather than 500 on every recorded operation.
+                raise WorkspaceError(f"The {label} dataset file for this graph is no longer on the server. "
+                                     "Re-upload the data or load a sample into a new graph.", 410, "data_file_missing")
             data[label] = {"sha256": file_digest(path), "bytes": path.stat().st_size}
     data["effective"] = "cleaned" if graph.cleaned_file else "raw"
     return json_ready({"dag": {"nodes": nodes, "edges": sorted(edges, key=lambda e: (e["source"], e["target"]))},

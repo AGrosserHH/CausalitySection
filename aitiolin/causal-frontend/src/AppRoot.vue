@@ -263,6 +263,7 @@
 
 <script setup>
 import P0WorkspacePanel from "./components/P0WorkspacePanel.vue"
+import { p0State } from "./p0/client.js"
 import { computed, nextTick, onUnmounted, ref, watch } from "vue"
 
 import CausalityAgentPanel from "./components/CausalityAgentPanel.vue"
@@ -1172,36 +1173,77 @@ function canRunAssessment() {
   return Boolean(graphId.value) && Boolean(selectedTreatment.value) && Boolean(selectedOutcome.value) && getCanvasNodeCount() >= 2 && hasCanvasEdges()
 }
 
+let lastAssessmentKey = ""
+let inFlightAssessment = null
+
+function assessmentKey() {
+  // Everything the identification answer depends on. Several watchers and the estimate flow
+  // all schedule a refresh; re-asking an unchanged question only adds duplicate run records
+  // and repeats the server-side snapshot hashing.
+  return [
+    graphId.value,
+    selectedTreatment.value,
+    selectedOutcome.value,
+    lastPersistedGraph.value.signature,
+    agentCleaningResult.value?.cleaned_file || "",
+    p0State.seed,
+  ].join("|")
+}
+
+function fetchAssessment(key) {
+  // persistGraphEdges refreshes the canvas, which schedules another refresh before this one has
+  // answered. Share the in-flight request for an identical key instead of issuing it twice.
+  if (inFlightAssessment?.key === key) {
+    return inFlightAssessment.promise
+  }
+  const promise = assessQuery({
+    graph_id: graphId.value,
+    treatment: selectedTreatment.value,
+    outcome: selectedOutcome.value,
+    estimand: "ATE",
+  }).finally(() => {
+    if (inFlightAssessment?.promise === promise) {
+      inFlightAssessment = null
+    }
+  })
+  inFlightAssessment = { key, promise }
+  return promise
+}
+
 async function refreshAssessment(showErrors = false) {
   const requestToken = ++assessmentRequestToken
   if (!canRunAssessment()) {
     assessmentResult.value = null
+    lastAssessmentKey = ""
     return null
   }
 
   const saved = await persistGraphEdges(false)
   if (!saved || requestToken !== assessmentRequestToken) {
     assessmentResult.value = null
+    lastAssessmentKey = ""
     return null
   }
 
+  const key = assessmentKey()
+  if (key === lastAssessmentKey && assessmentResult.value) {
+    return assessmentResult.value
+  }
+
   try {
-    const assessment = await assessQuery({
-      graph_id: graphId.value,
-      treatment: selectedTreatment.value,
-      outcome: selectedOutcome.value,
-      estimand: "ATE",
-    })
+    const assessment = await fetchAssessment(key)
     if (requestToken !== assessmentRequestToken) {
       return null
     }
     assessmentResult.value = assessment
+    lastAssessmentKey = key
     return assessment
   } catch (error) {
     if (requestToken !== assessmentRequestToken) {
       return null
     }
     assessmentResult.value = null
+    lastAssessmentKey = ""
     if (showErrors) {
       setStatus(getErrorMessage(error, "Assessment failed."), "error")
     }

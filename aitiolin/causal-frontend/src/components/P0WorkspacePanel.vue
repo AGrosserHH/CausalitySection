@@ -9,7 +9,7 @@
         </select>
       </label>
       <button type="button" :disabled="busy || !sampleId" @click="loadSample">Load guided example</button>
-      <label>Analysis seed <input v-model.number="p0State.seed" type="number" min="0" max="4294967295" step="1" :disabled="busy" /></label>
+      <label>Analysis seed <input v-model.number="p0State.seed" type="number" min="0" max="4294967295" step="1" placeholder="42 (default)" :disabled="busy" /></label>
     </div>
     <p v-if="message" role="status">{{ message }}</p>
     <p v-if="error" role="alert">{{ error }}</p>

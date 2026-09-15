@@ -1,4 +1,5 @@
-"""Request-local state; legacy RNG access is serialised and restored afterwards."""
+"""Request-local state. Analysis routes serialise legacy RNG access and restore it afterwards;
+record-keeping routes bypass the lock (see guard.UNSEEDED)."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 import random

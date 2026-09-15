@@ -44,6 +44,7 @@ Configured in `causalproject/.env`:
 - `P0_RETENTION_HOURS` (optional, default: `24`) - workspace access lifetime
 - `P0_MAX_UPLOAD_BYTES` (optional, default: `10485760`) - per-upload size cap
 - `P0_MAX_GRAPHS` (optional, default: `10`) - graphs per workspace
+- `P0_MAX_ACTIVE_WORKSPACES` (optional, default: `500`) - cap on unexpired sessions server-wide
 
 ## Frontend Setup (Vue)
 
@@ -164,6 +165,10 @@ python manage.py purge_p0_sessions
 
 Deletion covers owned server files and records. It does not remove downloaded bundles, host
 logs and backups, provider-side records, or the bundled sample CSVs.
+
+Any well-formed session token can open a workspace, so the server refuses new sessions with
+`503 session_limit` once `P0_MAX_ACTIVE_WORKSPACES` unexpired sessions exist. Expiry and the
+purge free slots; existing sessions are unaffected.
 
 ### Release checks
 

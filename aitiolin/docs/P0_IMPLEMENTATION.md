@@ -99,7 +99,7 @@ The OpenAI completion client is explicitly pointed at `https://api.openai.com/v1
 
 ## Retention, deletion and migration behavior
 
-Default access expiry is 24 hours, with controls to shorten the remaining period. Set `P0_RETENTION_HOURS` in the backend environment to change the default, subject to the implemented bounds. Other controls are `P0_MAX_UPLOAD_BYTES` (default 10 MiB) and `P0_MAX_GRAPHS` (default 10 per workspace).
+Default access expiry is 24 hours, with controls to shorten the remaining period. Set `P0_RETENTION_HOURS` in the backend environment to change the default, subject to the implemented bounds. Other controls are `P0_MAX_UPLOAD_BYTES` (default 10 MiB), `P0_MAX_GRAPHS` (default 10 per workspace) and `P0_MAX_ACTIVE_WORKSPACES` (default 500 unexpired sessions server-wide).
 
 **Physical expiry cleanup requires a scheduler.** Arrange for your local scheduler, cron or Windows Task Scheduler to run this in the backend virtual environment:
 

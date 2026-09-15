@@ -64,4 +64,16 @@ describe("P0 private client", () => {
     expect(p0State.lastRun).toBe("run-a")
     expect(p0State.runRevision).toBe(before + 1)
   })
+  it("omits a cleared seed and rejects a non-integer one before sending", async () => {
+    axios.request.mockResolvedValue({ data: {} })
+    p0State.seed = ""
+    await client.get("/api/p0/session/")
+    expect(axios.request.mock.calls[0][0].headers["X-Aitiolin-Seed"]).toBeUndefined()
+    p0State.seed = 7
+    await client.get("/api/p0/session/")
+    expect(axios.request.mock.calls[1][0].headers["X-Aitiolin-Seed"]).toBe("7")
+    p0State.seed = 1.5
+    await expect(client.get("/api/p0/session/")).rejects.toThrow("whole number")
+    expect(axios.request).toHaveBeenCalledTimes(2)
+  })
 })

@@ -8,7 +8,9 @@ class Command(BaseCommand):
     help = "Remove expired prototype sessions and their tracked files. Schedule this command regularly."
     def handle(self, *args, **options):
         deleted = skipped = 0
-        for workspace in Workspace.objects.filter(expires_at__lte=timezone.now()).iterator():
+        # Materialise first: SQLite gives no isolation between a chunked read and the deletes
+        # below, so iterating the live cursor can skip expired rows.
+        for workspace in list(Workspace.objects.filter(expires_at__lte=timezone.now())):
             reserved = False
             try:
                 reserve(workspace)

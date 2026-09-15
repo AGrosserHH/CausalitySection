@@ -122,7 +122,10 @@ def load_sample(request, sample_id):
     path = contained_path(Path(settings.BASE_DIR).parent, sample["file"])
     if not path.is_file():
         raise WorkspaceError("Sample file is not installed on this server.", 503)
-    content = path.read_bytes()
+    # The manifest stores git blob SHAs, which git computes over LF-normalised content.
+    # A Windows checkout has CRLF in the working tree, so normalise before hashing and
+    # store the normalised bytes, keeping loaded samples identical across platforms.
+    content = path.read_bytes().replace(b"\r\n", b"\n")
     blob = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
     if blob != sample["git_blob_sha1"]:
         raise WorkspaceError("Sample has changed; review and update its manifest before use.", 409)

@@ -24,6 +24,7 @@ from causal_app.models import CausalGraph
 from .core import token_digest
 from .models import Artifact, GraphOwnership, LLMPermit, RunRecord, Workspace
 from .service import WorkspaceError, query_for, reserve, release, snapshot
+from .runtime import seeded
 
 
 class P0ApiTests(TestCase):
@@ -241,3 +242,65 @@ class P0ApiTests(TestCase):
             self.assertEqual(first.post("/api/openai/suggest_edges/", {**payload, "context": "Changed"}, format="json",
                 HTTP_X_AITIOLIN_LLM_APPROVAL=token).status_code, 409)
             provider.return_value.chat.completions.create.assert_not_called()
+
+    def test_invalid_seed_is_named_in_the_error(self):
+        # APIClient credentials override per-call headers, so build bare clients here.
+        def with_seed(value):
+            client = APIClient()
+            client.credentials(HTTP_X_AITIOLIN_SESSION="ab" * 32, HTTP_X_AITIOLIN_SEED=value)
+            return client.get("/api/p0/session/")
+        for value in ("", "abc", "-1", "1.5", "4294967296"):
+            response = with_seed(value)
+            self.assertEqual(response.status_code, 400, value)
+            self.assertEqual(response.json()["code"], "invalid_seed", value)
+            self.assertIn("seed", response.json()["error"].lower(), value)
+        no_header = APIClient()
+        no_header.credentials(HTTP_X_AITIOLIN_SESSION="ab" * 32)
+        self.assertEqual(no_header.get("/api/p0/session/").status_code, 200)
+
+    def test_missing_data_file_fails_clearly_not_with_a_500(self):
+        graph, data = self.graph()
+        Path(graph.data_file.path).unlink()
+        ids = {v["name"]: v["id"] for v in data["variables"]}
+        response = self.client.post("/api/assess_query/", {"graph_id": graph.pk,
+            "treatment": ids["T"], "outcome": ids["Y"]}, format="json")
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.json()["code"], "data_file_missing")
+        # Record-keeping routes do not snapshot, so the graph stays inspectable.
+        self.assertEqual(self.client.get(f"/api/graphs/{graph.pk}/").status_code, 200)
+
+    @override_settings(P0_MAX_ACTIVE_WORKSPACES=2)
+    def test_active_session_cap_refuses_only_new_sessions(self):
+        self.assertEqual(self.client.get("/api/p0/session/").status_code, 200)
+        self.assertEqual(self.other.get("/api/p0/session/").status_code, 200)
+        third = self.new_client("ef" * 32)
+        response = third.get("/api/p0/session/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["code"], "session_limit")
+        self.assertFalse(Workspace.objects.filter(pk=token_digest("ef" * 32)).exists())
+        self.assertEqual(self.client.get("/api/p0/session/").status_code, 200)
+        Workspace.objects.filter(pk=token_digest("cd" * 32)).update(
+            expires_at=timezone.now() - timedelta(seconds=1))
+        self.assertEqual(third.get("/api/p0/session/").status_code, 200)
+
+    def test_purge_removes_every_expired_session_in_one_pass(self):
+        tokens = ["a1" * 32, "b2" * 32, "c3" * 32, "d4" * 32, "e5" * 32]
+        for token in tokens:
+            self.upload(self.new_client(token))
+        keys = [token_digest(token) for token in tokens]
+        Workspace.objects.filter(pk__in=keys).update(expires_at=timezone.now() - timedelta(seconds=1))
+        output = io.StringIO()
+        call_command("purge_p0_sessions", stdout=output)
+        self.assertFalse(Workspace.objects.filter(pk__in=keys).exists())
+        self.assertIn("Deleted: 5", output.getvalue())
+
+    def test_record_keeping_routes_skip_the_rng_lock(self):
+        graph, data = self.graph()
+        ids = {v["name"]: v["id"] for v in data["variables"]}
+        with patch("p0.guard.seeded", wraps=seeded) as lock:
+            self.assertEqual(self.client.get(f"/api/graphs/{graph.pk}/").status_code, 200)
+            self.assertEqual(self.client.get("/api/p0/session/").status_code, 200)
+            lock.assert_not_called()
+            self.client.post("/api/assess_query/", {"graph_id": graph.pk,
+                "treatment": ids["T"], "outcome": ids["Y"]}, format="json")
+            lock.assert_called_once_with(42)

@@ -2,8 +2,20 @@ import axios from "axios"
 import { reactive } from "vue"
 import { sessionToken } from "./storage.js"
 
-export const p0State = reactive({ pending: 0, seed: 42, llmEnabled: false, review: null,
+export const DEFAULT_SEED = 42
+export const MAX_SEED = 4294967295
+export const p0State = reactive({ pending: 0, seed: DEFAULT_SEED, llmEnabled: false, review: null,
   lastRun: null, runRevision: 0 })
+
+// A cleared <input type=number> reads as "": omit the header so the server default applies,
+// instead of sending a value the guard has to reject. Anything else non-integer is a caller error.
+export function seedHeader(value) {
+  if (value === "" || value === null || value === undefined) return null
+  if (!Number.isInteger(value) || value < 0 || value > MAX_SEED) {
+    throw new Error(`Analysis seed must be a whole number between 0 and ${MAX_SEED}.`)
+  }
+  return String(value)
+}
 let reviewResolver = null
 let queue = Promise.resolve()
 
@@ -33,8 +45,10 @@ async function execute(method, url, data, config = {}) {
     throw new Error("Only same-origin API routes are permitted.")
   }
   const headers = { ...config.headers,
-    "X-Aitiolin-Session": sessionToken(), "X-Aitiolin-Seed": String(p0State.seed),
+    "X-Aitiolin-Session": sessionToken(),
     "X-Aitiolin-LLM-Mode": p0State.llmEnabled ? "review" : "off" }
+  const seed = seedHeader(p0State.seed)
+  if (seed !== null) headers["X-Aitiolin-Seed"] = seed
   // Let the browser supply a multipart boundary.
   if (data instanceof FormData) delete headers["Content-Type"]
   const options = { ...config, baseURL: window.location.origin, method, url, data, headers, withCredentials: false }

@@ -1,5 +1,6 @@
 """Wrap existing API views: session ownership, serialisation and run capture."""
 import json
+from contextlib import nullcontext
 from functools import wraps
 from django.conf import settings
 from django.http import JsonResponse
@@ -17,6 +18,9 @@ RECORDED = {"causal_inference", "assess_query", "assess_query_alias_hyphen",
             "assess_query_alias_no_slash", "assess_query_alias_hyphen_no_slash",
             "robustness_dashboard", "agent_compare_models", "agent_estimate_plan",
             "time_series_analysis", "what_if_analysis", "root_cause_analysis"}
+# Record-keeping routes never touch the RNG. Seeding them would only make every session queue
+# behind whichever analysis currently holds the process-wide RNG lock.
+UNSEEDED = {"upload_csv", "variables", "save_graph", "graph_details"}
 
 
 def reply(data, status=200):
@@ -56,7 +60,11 @@ def guard(view, operation):
             request.p0_operation = operation
             context_token = current_request.set(request)
             payload = request_payload(request)
-            seed = parse_seed(request.headers.get("X-Aitiolin-Seed", 42))
+            try:
+                seed = parse_seed(request.headers.get("X-Aitiolin-Seed", 42))
+            except ValueError:
+                raise WorkspaceError("Analysis seed must be an integer between 0 and 4294967295 "
+                                     "(X-Aitiolin-Seed header).", 400, "invalid_seed") from None
             request.p0_seed = seed
             graph_id = kwargs.get("graph_id", payload.get("graph_id"))
             if graph_id not in (None, ""):
@@ -70,7 +78,8 @@ def guard(view, operation):
             if graph is not None and operation in RECORDED:
                 before = snapshot(graph)
             started_at = timezone.now()
-            with seeded(seed):
+            rng = nullcontext() if operation.startswith("p0_") or operation in UNSEEDED else seeded(seed)
+            with rng:
                 response = view(request, *args, **kwargs)
             data = getattr(response, "data", None)
             if graph is not None:

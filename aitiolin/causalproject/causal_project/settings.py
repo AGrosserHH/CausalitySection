@@ -192,6 +192,7 @@ MIDDLEWARE.insert(1, "p0.guard.PrivateMediaMiddleware")
 P0_RETENTION_HOURS = int(os.getenv("P0_RETENTION_HOURS", "24"))
 P0_MAX_UPLOAD_BYTES = int(os.getenv("P0_MAX_UPLOAD_BYTES", "10485760"))
 P0_MAX_GRAPHS = int(os.getenv("P0_MAX_GRAPHS", "10"))
+P0_MAX_ACTIVE_WORKSPACES = int(os.getenv("P0_MAX_ACTIVE_WORKSPACES", "500"))
 DATA_UPLOAD_MAX_MEMORY_SIZE = P0_MAX_UPLOAD_BYTES + 1048576
 STORAGES = {
     "default": {"BACKEND": "p0.storage.PrivateStorage"},

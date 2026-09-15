@@ -302,7 +302,9 @@ class CausalApiTests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertEqual(response.data["estimated_effect"], 1.23)
-		self.assertEqual(response.data["graph_image"], "/media/causal_graphs/test.png")
+		# P0 replaces public media URLs with the ownership-checked private image route.
+		self.assertEqual(response.data["graph_image"],
+			f"/api/p0/graphs/{graph_id}/image/")
 
 	@patch("causal_app.views.get_causal_model_class", return_value=_FakeCausalModel)
 	def test_assess_query_success(self, _mock_model_class):

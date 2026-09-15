@@ -1,3 +1,4 @@
+from p0.llm import reviewed_completion
 import json
 from collections.abc import Sequence
 
@@ -12,8 +13,8 @@ SYSTEM_PROMPT = (
 )
 
 MODEL_SYSTEM_PROMPT = (
-    "You are a causal analysis agent. You receive variable names plus a statistical profile of the "
-    "dataset (types, missingness, ranges, quality warnings). Propose a causal model for analysis. "
+    "You are a causal analysis agent. You receive variable names and modeling context. "
+    "Dataset profile values are withheld. Propose a causal model for analysis. "
     "Return only valid JSON with keys: 'edges' (list of {source, target, directed, reason} where each "
     "reason is one full sentence), "
     "'treatment_candidates' (list of variable names most plausible as interventions, best first), "
@@ -97,7 +98,7 @@ def suggest_edges_with_openai(variables: Sequence[str], context: str = "", max_e
     except ImportError as exc:
         raise ImportError("OpenAI package is not installed.") from exc
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url="https://api.openai.com/v1", timeout=30.0, max_retries=0)
 
     user_prompt = (
         "Variables:\n"
@@ -107,7 +108,7 @@ def suggest_edges_with_openai(variables: Sequence[str], context: str = "", max_e
         + f"\n\nReturn at most {max_edges} suggested edges in JSON."
     )
 
-    completion = client.chat.completions.create(
+    completion = reviewed_completion(client,
         model=settings.OPENAI_MODEL,
         temperature=0.2,
         response_format={"type": "json_object"},
@@ -140,19 +141,19 @@ def suggest_model_with_openai(
     except ImportError as exc:
         raise ImportError("OpenAI package is not installed.") from exc
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url="https://api.openai.com/v1", timeout=30.0, max_retries=0)
 
     user_prompt = (
         "Variables:\n"
         + "\n".join(f"- {name}" for name in clean_variables)
         + "\n\nDataset profile:\n"
-        + (profile_summary.strip() or "No profile available.")
+        + "Withheld by the metadata-only privacy policy."
         + "\n\nContext:\n"
         + (context.strip() or "No extra context provided.")
         + f"\n\nReturn at most {max_edges} suggested edges in JSON."
     )
 
-    completion = client.chat.completions.create(
+    completion = reviewed_completion(client,
         model=settings.OPENAI_MODEL,
         temperature=0.2,
         response_format={"type": "json_object"},

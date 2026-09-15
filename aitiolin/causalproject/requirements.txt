@@ -9,4 +9,3 @@ numpy>=2.2,<3
 openai>=1.66,<2
 rdflib>=7.0,<8
 python-dotenv>=1.0,<2
-python-dotenv>=1.0,<2

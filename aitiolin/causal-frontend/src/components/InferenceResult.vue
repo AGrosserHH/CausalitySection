@@ -33,7 +33,7 @@
 
     <div v-if="causalGraphImageUrl" class="graph-wrap">
       <h4>Causal Graph</h4>
-      <img :src="causalGraphImageUrl" alt="Causal Graph" class="graph-image" />
+      <PrivateGraphImage :url="causalGraphImageUrl" class="graph-image" />
     </div>
 
     <details v-if="inferenceResponse" class="payload-details">
@@ -44,6 +44,7 @@
 </template>
 
 <script setup>
+import PrivateGraphImage from "./PrivateGraphImage.vue"
 import { computed } from "vue"
 
 import { formatEffectValue, interpretEffect, methodLabel as sharedMethodLabel } from "../composables/useInferenceFormatting"

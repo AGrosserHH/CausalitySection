@@ -1,4 +1,4 @@
-import axios from "axios"
+import axios from "../p0/client.js"
 
 function getErrorMessage(error, fallbackMessage) {
   if (error?.response?.data?.error) {

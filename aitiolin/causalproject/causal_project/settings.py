@@ -186,3 +186,18 @@ LOGGING = {
     },
 }
 
+# P0: private, anonymous prototype workspaces; no public MEDIA_ROOT serving.
+INSTALLED_APPS += ["p0.apps.P0Config"]
+MIDDLEWARE.insert(1, "p0.guard.PrivateMediaMiddleware")
+P0_RETENTION_HOURS = int(os.getenv("P0_RETENTION_HOURS", "24"))
+P0_MAX_UPLOAD_BYTES = int(os.getenv("P0_MAX_UPLOAD_BYTES", "10485760"))
+P0_MAX_GRAPHS = int(os.getenv("P0_MAX_GRAPHS", "10"))
+DATA_UPLOAD_MAX_MEMORY_SIZE = P0_MAX_UPLOAD_BYTES + 1048576
+STORAGES = {
+    "default": {"BACKEND": "p0.storage.PrivateStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = [*default_headers, "x-aitiolin-session", "x-aitiolin-seed",
+                      "x-aitiolin-llm-mode", "x-aitiolin-llm-approval"]
+CORS_EXPOSE_HEADERS = ["X-Aitiolin-Run", "Content-Disposition"]

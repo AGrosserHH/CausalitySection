@@ -38,6 +38,7 @@ class _FakeCausalModel:
 
 class CausalApiTests(APITestCase):
 	def setUp(self):
+		self.client.credentials(HTTP_X_AITIOLIN_SESSION="ab" * 32, HTTP_X_AITIOLIN_LLM_MODE="review")
 		self.temp_media = tempfile.mkdtemp(prefix="causal_test_media_")
 		self.override = override_settings(MEDIA_ROOT=self.temp_media)
 		self.override.enable()

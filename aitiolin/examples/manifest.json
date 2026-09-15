@@ -1,0 +1,41 @@
+{
+  "schema_version": "aitiolin.samples.v1",
+  "samples": [
+    {
+      "id": "churn",
+      "title": "Telco churn — contract assumptions",
+      "description": "Explore contract tier and churn; inspect how the result depends on the graph and measurement timing.",
+      "file": "Churn.csv",
+      "git_blob_sha1": "3de7a612d1609f25f21a455bda77948729369002",
+      "source": "https://github.com/AGrosserHH/CausalitySection/blob/0a6ae13dddbe018aec8b9ef6ce4e903699c38c25/aitiolin/Churn.csv",
+      "walkthrough": "https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin/examples/churn",
+      "treatment": "Contract", "outcome": "Churn",
+      "method_name": "backdoor.linear_regression",
+      "edges": [["tenure", "Contract"], ["tenure", "Churn"], ["gender", "Contract"], ["gender", "Churn"], ["Contract", "Churn"]],
+      "warnings": [
+        "The preset graph is a hypothesis, not a discovered or validated graph.",
+        "Snapshot tenure may be post-treatment. Timing can invalidate the proposed adjustment.",
+        "Contract category coding assumes equally spaced tiers; inspect encoding before interpreting a coefficient.",
+        "This snapshot is not a randomised intervention and cannot establish a business recommendation."
+      ]
+    },
+    {
+      "id": "worldbank",
+      "title": "Health spending — specification sensitivity",
+      "description": "Start with the 2019 country snapshot, then compare the levels model with a deliberately reviewed log transformation.",
+      "file": "examples/worldbank/worldbank_health_mortality_2019.csv",
+      "git_blob_sha1": "cb9aee414cc577d273419cb717dfa82af2984151",
+      "source": "https://github.com/AGrosserHH/CausalitySection/blob/0a6ae13dddbe018aec8b9ef6ce4e903699c38c25/aitiolin/examples/worldbank/worldbank_health_mortality_2019.csv",
+      "walkthrough": "https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin/examples/worldbank",
+      "treatment": "health_expenditure_per_capita", "outcome": "child_mortality_rate",
+      "method_name": "backdoor.linear_regression",
+      "edges": [["gdp_per_capita", "health_expenditure_per_capita"], ["gdp_per_capita", "child_mortality_rate"], ["region", "health_expenditure_per_capita"], ["region", "child_mortality_rate"], ["health_expenditure_per_capita", "child_mortality_rate"]],
+      "warnings": [
+        "This demo starts in original units. Log transforms are not applied silently.",
+        "Child mortality is recorded per 100 live births; verify units before reporting effects.",
+        "Region is nominal. The current generic preprocessor may use ordinal codes; inspect alternative encoding.",
+        "Country aggregates are observational and do not establish patient-level or policy effects."
+      ]
+    }
+  ]
+}

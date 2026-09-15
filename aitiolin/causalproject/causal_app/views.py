@@ -1,3 +1,4 @@
+from p0.llm import ConsentRequired
 import logging
 import os
 
@@ -103,6 +104,8 @@ def _read_effective_dataframe(graph):
         )
     try:
         data_frame = pd.read_csv(dataset_path)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         return None, None, Response({"error": f"Failed to read dataset: {exc}"}, status=400)
     return data_frame, source, None
@@ -151,6 +154,8 @@ def upload_csv(request):
 
     try:
         data_frame = pd.read_csv(graph.data_file.path)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         return Response({"error": f"Could not parse CSV: {exc}"}, status=400)
 
@@ -286,6 +291,8 @@ def save_graph(request):
                         score=evidence_item.get("score"),
                         details=evidence_item.get("details", {}),
                     )
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Failed to save graph edges")
         return Response({"error": f"Failed to save graph: {exc}"}, status=400)
@@ -394,6 +401,8 @@ def causal_inference(request):
         return Response({"error": "DoWhy library is not installed on the server."}, status=500)
     except ValueError as exc:
         return Response({"error": str(exc)}, status=400)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Causal inference failed")
         return Response({"error": f"Causal inference failed: {exc}"}, status=400)
@@ -431,6 +440,8 @@ def openai_suggest_edges(request):
         return Response({"error": "OpenAI package is not installed on the server."}, status=500)
     except ValueError as exc:
         return Response({"error": str(exc)}, status=400)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("OpenAI edge suggestion failed")
         return Response({"error": f"OpenAI request failed: {exc}"}, status=502)
@@ -467,6 +478,8 @@ def openai_draft_graph(request):
 
     try:
         data_frame = pd.read_csv(dataset_path)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         return Response({"error": f"Failed to read dataset: {exc}"}, status=400)
 
@@ -490,6 +503,8 @@ def openai_draft_graph(request):
         return Response({"error": "OpenAI package is not installed on the server."}, status=500)
     except ValueError as exc:
         return Response({"error": str(exc)}, status=400)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("OpenAI draft graph failed")
         return Response({"error": f"OpenAI draft failed: {exc}"}, status=502)
@@ -643,6 +658,8 @@ def assess_query(request):
             graph=dot_graph,
         )
         identified_estimand = model.identify_effect()
+    except ConsentRequired:
+        raise
     except Exception as exc:
         return Response({"error": f"Identification failed: {exc}"}, status=400)
 
@@ -785,6 +802,8 @@ def robustness_dashboard(request):
             graph=dot_graph,
         )
         identified_estimand = model.identify_effect()
+    except ConsentRequired:
+        raise
     except Exception as exc:
         return Response({"error": f"Failed to build causal model: {exc}"}, status=400)
 
@@ -913,6 +932,8 @@ def time_series_analysis(request):
         )
     except ValueError as exc:
         return Response({"error": str(exc)}, status=400)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Time-series analysis failed")
         return Response({"error": f"Time-series analysis failed: {exc}"}, status=400)
@@ -1021,6 +1042,8 @@ def agent_profile(request):
 
     try:
         profile = profile_data_frame(data_frame)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Data profiling failed")
         return Response({"error": f"Data profiling failed: {exc}"}, status=400)
@@ -1054,6 +1077,8 @@ def agent_suggest_cleaning(request):
     try:
         profile = profile_data_frame(data_frame)
         steps = suggest_cleaning_plan(profile)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Cleaning-plan suggestion failed")
         return Response({"error": f"Cleaning-plan suggestion failed: {exc}"}, status=400)
@@ -1091,6 +1116,8 @@ def agent_apply_cleaning(request):
 
     try:
         cleaned_frame, applied_steps = apply_cleaning_plan(data_frame, steps)
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Applying cleaning plan failed")
         return Response({"error": f"Applying cleaning plan failed: {exc}"}, status=400)
@@ -1108,6 +1135,8 @@ def agent_apply_cleaning(request):
         graph.cleaned_file.save(cleaned_name, ContentFile(csv_bytes), save=False)
         graph.cleaning_plan = list(graph.cleaning_plan or []) + applied_steps
         graph.save(update_fields=["cleaned_file", "cleaning_plan"])
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Failed to persist cleaned dataset")
         return Response({"error": f"Failed to persist cleaned dataset: {exc}"}, status=400)
@@ -1184,7 +1213,7 @@ def agent_suggest_model(request):
 
     llm_suggestion = None
     llm_error = ""
-    if settings.OPENAI_API_KEY:
+    if settings.OPENAI_API_KEY and request.headers.get("X-Aitiolin-LLM-Mode", "off") == "review":
         try:
             profile = profile_data_frame(data_frame)
             llm_suggestion = suggest_model_with_openai(
@@ -1193,6 +1222,8 @@ def agent_suggest_model(request):
                 context=context,
                 max_edges=max_edges,
             )
+        except ConsentRequired:
+            raise
         except Exception as exc:
             logger.exception("LLM model suggestion failed; falling back to heuristics")
             llm_error = f"LLM suggestion failed ({exc}); statistical heuristics were used instead."
@@ -1204,6 +1235,8 @@ def agent_suggest_model(request):
             max_edges=max_edges,
             llm_suggestion=llm_suggestion,
         )
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Causal model suggestion failed")
         return Response({"error": f"Causal model suggestion failed: {exc}"}, status=400)
@@ -1265,6 +1298,8 @@ def agent_estimate_plan(request):
         recommended_estimator = recommend_estimator(
             processed, treatment_var.name, identification.get("adjustment_set", [])
         )
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Estimate-plan refresh failed")
         return Response({"error": f"Estimate-plan refresh failed: {exc}"}, status=400)
@@ -1325,6 +1360,8 @@ def agent_compare_models(request):
             outcome_var.name,
             requested_method,
         )
+    except ConsentRequired:
+        raise
     except Exception as exc:
         logger.exception("Model comparison failed")
         return Response({"error": f"Model comparison failed: {exc}"}, status=400)

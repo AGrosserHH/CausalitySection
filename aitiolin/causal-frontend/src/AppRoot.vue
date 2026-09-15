@@ -13,6 +13,11 @@
         <h1 class="title">Causal AI Graph Builder</h1>
         <p class="subtitle">Upload data, let the agent profile/clean/model it (or build by hand), refine the graph on the canvas, estimate the effect, and pressure-test the result.</p>
       </header>
+      <P0WorkspacePanel
+        :graph-id="graphId" :has-estimate="Boolean(inferenceResponse)"
+        @sample-loaded="loadP0Sample" @estimate="computeInference"
+        @check="runRobustness" @compare="runAgentCompareModels"
+      />
 
       <div v-if="statusMessage" :class="['status-banner', statusType]">
         {{ statusMessage }}
@@ -166,6 +171,7 @@
         <summary>Robustness dashboard</summary>
         <RobustnessDashboard
           :result="robustnessResult"
+          :comparison="agentComparisonResult"
           :running="robustnessRunning"
           @run="runRobustness"
           @export-json="exportRobustness('json')"
@@ -256,6 +262,7 @@
 </template>
 
 <script setup>
+import P0WorkspacePanel from "./components/P0WorkspacePanel.vue"
 import { computed, nextTick, onUnmounted, ref, watch } from "vue"
 
 import CausalityAgentPanel from "./components/CausalityAgentPanel.vue"
@@ -708,6 +715,29 @@ async function handleFileUpload(file) {
     datasetPreviewRows.value = []
     setStatus(getErrorMessage(error, "CSV upload failed."), "error")
   }
+}
+
+async function loadP0Sample(data) {
+  if (assessmentTimerId) clearTimeout(assessmentTimerId)
+  if (agentEstimateTimerId) clearTimeout(agentEstimateTimerId)
+  assessmentRequestToken += 1
+  agentEstimateRequestToken += 1
+  await resetAnalysisWorkspace()
+  graphId.value = data.graph_id
+  variables.value = data.variables
+  datasetName.value = data.graph_name
+  datasetPreviewRows.value = data.preview || []
+  agentProfile.value = null
+  agentCleaningPlan.value = null
+  agentCleaningResult.value = null
+  lastPersistedGraph.value = { graphId: data.graph_id, signature: "" }
+  await nextTick()
+  programmaticCanvasAdd = true
+  try { await refreshGraphDetails() } finally { programmaticCanvasAdd = false }
+  selectedTreatment.value = data.treatment_id
+  selectedOutcome.value = data.outcome_id
+  selectedMethod.value = data.method_name
+  setStatus("Sample loaded. The preset DAG is an educational hypothesis; review its assumptions before estimation.")
 }
 
 async function saveGraph() {
@@ -1252,7 +1282,7 @@ async function runRobustness() {
       treatment: selectedTreatment.value,
       outcome: selectedOutcome.value,
     })
-    setStatus("Robustness analysis finished. Review the dashboard for the score, refuters, and sensitivity sweep.")
+    setStatus("Robustness analysis finished. Review refutations, model comparisons, assumptions and the sensitivity curve.")
   } catch (error) {
     setStatus(getErrorMessage(error, "Failed to run robustness checks."), "error")
   } finally {

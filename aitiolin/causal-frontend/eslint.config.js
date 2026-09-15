@@ -16,6 +16,12 @@ export default [
         FormData: "readonly",
         File: "readonly",
         console: "readonly",
+        sessionStorage: "readonly",
+        crypto: "readonly",
+        URL: "readonly",
+        Blob: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
       },
     },
     rules: {

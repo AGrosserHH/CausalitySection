@@ -41,6 +41,9 @@ Configured in `causalproject/.env`:
 - `DJANGO_CSRF_TRUSTED_ORIGINS`
 - `OPENAI_API_KEY` (optional, enables AI edge suggestions)
 - `OPENAI_MODEL` (optional, default: `gpt-4o-mini`)
+- `P0_RETENTION_HOURS` (optional, default: `24`) - workspace access lifetime
+- `P0_MAX_UPLOAD_BYTES` (optional, default: `10485760`) - per-upload size cap
+- `P0_MAX_GRAPHS` (optional, default: `10`) - graphs per workspace
 
 ## Frontend Setup (Vue)
 
@@ -82,6 +85,9 @@ npm run build
 
 ## API Endpoints
 
+All routes below require an `X-Aitiolin-Session` bearer key and only reach graphs owned by
+that session. See [Private prototype workspaces (P0)](#private-prototype-workspaces-p0).
+
 | Method | URL | Description |
 |--------|-----|-------------|
 | POST | `/api/upload_csv/` | Upload dataset CSV, create graph + variables |
@@ -100,6 +106,72 @@ npm run build
 | POST | `/api/agent/estimate_plan/` | Causality Agent: re-evaluate identifiability + recommended estimator against the currently saved canvas graph |
 | POST | `/api/agent/compare_models/` | Causality Agent: estimate the effect under competing DAG variants (canvas / minimal / confounder-stressed) and report a stability verdict |
 
+## Private prototype workspaces (P0)
+
+Since `0.1.0-prototype.1` the API is scoped to anonymous, per-tab workspaces. This changes how
+every existing endpoint behaves, so read this before using the API directly.
+
+- **Every `/api/` route requires an `X-Aitiolin-Session` bearer key.** Requests without one get
+  `401`; requests for a graph owned by another session get `404`. The frontend creates and stores
+  the key in that browser tab's `sessionStorage` automatically - it is not an account, and losing
+  it loses access to that workspace until expiry or deletion. Duplicated tabs may copy the key and
+  share the workspace.
+- **Uploaded and generated files are no longer served from `/media/`.** That route now returns
+  `404`, and `graph_image` in API responses points at the ownership-checked
+  `/api/p0/graphs/<id>/image/`. Do not configure a reverse proxy or CDN to serve `MEDIA_ROOT`.
+- **LLM assistance is off by default.** Copilot routes return `403` unless the request carries
+  `X-Aitiolin-LLM-Mode: review`, and then return `409` with a preview of the exact model, messages
+  and settings. Nothing is transmitted until that payload is approved; approval is bound to one
+  session, operation and payload hash, single-use, and expires after two minutes. Prompts carry
+  variable names and supplied context only - dataset profiles and CSV rows are withheld.
+- **Graphs created before this version have no owner** and are deliberately not adopted by the
+  first visitor. They stay in the database but are unreachable through the protected API. Keep a
+  backup and re-upload the datasets you still need.
+
+### P0 endpoints
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET/PATCH | `/api/p0/session/` | Session info; shorten remaining retention |
+| DELETE | `/api/p0/session/data/` | Delete this session's graphs, uploads, cleaned copies, images, runs |
+| GET | `/api/p0/samples/` | List allowlisted guided samples |
+| POST | `/api/p0/samples/<id>/load/` | Load a sample into a new owned graph with a preset hypothesis DAG |
+| GET | `/api/p0/graphs/<id>/runs/` | Recorded analysis-stage snapshots for a graph |
+| GET | `/api/p0/graphs/<id>/image/` | Private graph image delivery |
+| GET | `/api/p0/runs/<run_id>/bundle/` | Export a run bundle; `?file_format=json` or `zip` (default) |
+
+Bundles record dataset hashes, cleaning history, query, seed and dependency versions - not CSV
+rows. Reproduction still needs the matching source data and environment; a seed alone is not a
+reproducibility guarantee.
+
+### Retention and cleanup
+
+Access expires 24 hours after creation by default. Expiry removes API access, but **physical
+removal requires a scheduler** - arrange for this to run hourly in the backend virtualenv with its
+working directory set to `causalproject`:
+
+```sh
+python manage.py purge_p0_sessions
+```
+
+If a worker crashed mid-write it can leave a reservation set. Stop **all** application workers
+before recovering, never while a request can still write files:
+
+```sh
+python manage.py recover_p0_locks --workers-stopped
+python manage.py purge_p0_sessions
+```
+
+Deletion covers owned server files and records. It does not remove downloaded bundles, host
+logs and backups, provider-side records, or the bundled sample CSVs.
+
+### Release checks
+
+`VERSION` is the version source of truth; keep `causal-frontend/package.json`, its lockfile and
+`CHANGELOG.md` aligned. The checks in `../scripts/` and the workflow in `../.github/workflows/`
+run terminology, version and tracked-runtime-artifact checks alongside the backend and frontend
+suites.
+
 ## Example Datasets
 
 - `../Churn.csv` (repository root) - the built-in telco churn example.
@@ -108,7 +180,8 @@ npm run build
 
 ## Notes
 
-- Uploaded datasets and generated graph images are written under `causalproject/media/`.
+- Uploaded datasets and generated graph images are written under `causalproject/media/`,
+  which is **not** publicly served; they are delivered only through ownership-checked routes.
 - Workspace Python interpreter is configured in `.vscode/settings.json` to use `.venv` at repository root.
 - `python-dotenv` is used to load `.env`; it is listed in `requirements.txt`.
 - The robustness dashboard runs three estimators by default (`linear_regression`, `propensity_score_matching`, `propensity_score_weighting`). `doubly_robust_estimator` is excluded by default due to memory usage in dev.

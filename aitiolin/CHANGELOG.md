@@ -1,5 +1,21 @@
 # Changelog
 
+## Consolidation — 2026-09-17
+
+Structure only; no behaviour change. All five comparison estimators and the legacy estimator return
+bit-identical results on the Churn sample before and after.
+
+- Merge the separate `p0` and `p1` Django apps into `causal_app` as `causal_app/workspace/` (sessions,
+  privacy, exports) and `causal_app/analysis/` (reviewed comparisons). Frontend code moves to
+  `src/workspace/` and `src/analysis/`; components become `WorkspacePanel`, `PrivacyReview`, `AnalysisPanel`.
+- Routes move to `/api/workspace/…` and `/api/analysis/…`. Commands become `purge_sessions` and
+  `recover_locks`. Settings become `WORKSPACE_*`; the old `P0_*` environment names are still read.
+- Recreate the workspace tables under `causal_app` (migration `0010_workspace_models`), which also drops
+  the old `p0_*` tables. They only ever held 24-hour session data. Run `python manage.py migrate`.
+- Keep the identifiers stored inside exported bundles (`aitiolin.run.v1`, `aitiolin.p1.v1`, the `p1` key,
+  `p1_estimate`) so existing exports stay restorable.
+- Remove the one-off `scripts/integrate_p1_sources.py`, `p0-source.json` and the installer sections of the docs.
+
 ## P1 integration — 2026-09-17
 
 P1 module version: `0.1.0-p1.1`. The existing application version is unchanged;

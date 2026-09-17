@@ -186,16 +186,22 @@ LOGGING = {
     },
 }
 
-# P0: private, anonymous prototype workspaces; no public MEDIA_ROOT serving.
-INSTALLED_APPS += ["p0.apps.P0Config"]
-MIDDLEWARE.insert(1, "p0.guard.PrivateMediaMiddleware")
-P0_RETENTION_HOURS = int(os.getenv("P0_RETENTION_HOURS", "24"))
-P0_MAX_UPLOAD_BYTES = int(os.getenv("P0_MAX_UPLOAD_BYTES", "10485760"))
-P0_MAX_GRAPHS = int(os.getenv("P0_MAX_GRAPHS", "10"))
-P0_MAX_ACTIVE_WORKSPACES = int(os.getenv("P0_MAX_ACTIVE_WORKSPACES", "500"))
-DATA_UPLOAD_MAX_MEMORY_SIZE = P0_MAX_UPLOAD_BYTES + 1048576
+# Private, anonymous prototype workspaces; no public MEDIA_ROOT serving.
+MIDDLEWARE.insert(1, "causal_app.workspace.guard.PrivateMediaMiddleware")
+
+
+def _workspace_env(name, legacy_name, default):
+    # The P0_* names predate the move into causal_app.workspace; keep honouring them.
+    return int(os.getenv(name, os.getenv(legacy_name, default)))
+
+
+WORKSPACE_RETENTION_HOURS = _workspace_env("WORKSPACE_RETENTION_HOURS", "P0_RETENTION_HOURS", "24")
+WORKSPACE_MAX_UPLOAD_BYTES = _workspace_env("WORKSPACE_MAX_UPLOAD_BYTES", "P0_MAX_UPLOAD_BYTES", "10485760")
+WORKSPACE_MAX_GRAPHS = _workspace_env("WORKSPACE_MAX_GRAPHS", "P0_MAX_GRAPHS", "10")
+WORKSPACE_MAX_ACTIVE = _workspace_env("WORKSPACE_MAX_ACTIVE", "P0_MAX_ACTIVE_WORKSPACES", "500")
+DATA_UPLOAD_MAX_MEMORY_SIZE = WORKSPACE_MAX_UPLOAD_BYTES + 1048576
 STORAGES = {
-    "default": {"BACKEND": "p0.storage.PrivateStorage"},
+    "default": {"BACKEND": "causal_app.workspace.storage.PrivateStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
 from corsheaders.defaults import default_headers

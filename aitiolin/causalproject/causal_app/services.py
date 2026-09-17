@@ -174,7 +174,7 @@ def estimate_effect(
 ) -> dict[str, Any]:
     """Legacy DoWhy entry point: fail explicitly; never silently switch estimators.
 
-    For reviewed encoding, explicit contrasts and uncertainty use the P1 path.
+    For reviewed encoding, explicit contrasts and uncertainty use the reviewed-comparison path (causal_app.analysis).
     """
     causal_model_class = get_causal_model_class()
     model = causal_model_class(data=data_frame, treatment=treatment_name,

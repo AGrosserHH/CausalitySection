@@ -79,11 +79,11 @@
 </template>
 <script setup>
 import { computed } from "vue"
-import { evidenceStatus, finite, metric, sweepGeometry } from "../p0/contracts.mjs"
+import { evidenceStatus, finite, metric, sweepGeometry } from "../workspace/contracts.mjs"
 const props = defineProps({ result: { type: Object, default: null }, running: Boolean,
   comparison: { type: Object, default: null } })
 defineEmits(["run", "export-json", "export-csv"])
-const matchedComparison = computed(() => Boolean(props.result?.p0_analysis_key) && props.result.p0_analysis_key === props.comparison?.p0_analysis_key)
+const matchedComparison = computed(() => Boolean(props.result?.analysis_key) && props.result.analysis_key === props.comparison?.analysis_key)
 const geometry = computed(() => sweepGeometry(props.result?.sensitivity_points || []))
 const scoreLabel = computed(() => {
   const score = finite(props.result?.robustness_score)

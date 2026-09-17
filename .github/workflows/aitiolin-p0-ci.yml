@@ -47,6 +47,8 @@ jobs:
           cache: npm
           cache-dependency-path: aitiolin/causal-frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=critical
       - run: npm run lint
       - run: npm test
       - run: npm run build
@@ -62,7 +64,7 @@ jobs:
         shell: bash
         run: |
           test "${GITHUB_REF_NAME#aitiolin-v}" = "$(cat aitiolin/VERSION)"
-          git archive --format=zip --output=aitiolin-source.zip HEAD aitiolin scripts .github
+          git archive --format=zip --output=aitiolin-source.zip HEAD aitiolin scripts .github package.json
       - name: Create a draft, not a published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

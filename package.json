@@ -2,10 +2,10 @@
   "name": "causality-section",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix CausalGUI/causal-frontend run dev",
-    "lint": "npm --prefix CausalGUI/causal-frontend run lint",
-    "test": "npm --prefix CausalGUI/causal-frontend run test",
-    "build": "npm --prefix CausalGUI/causal-frontend run build",
-    "format": "npm --prefix CausalGUI/causal-frontend run format"
+    "dev": "npm --prefix aitiolin/causal-frontend run dev",
+    "lint": "npm --prefix aitiolin/causal-frontend run lint",
+    "test": "npm --prefix aitiolin/causal-frontend run test",
+    "build": "npm --prefix aitiolin/causal-frontend run build",
+    "format": "npm --prefix aitiolin/causal-frontend run format"
   }
 }

@@ -1,0 +1,61 @@
+name: Prepare and test P1 integration branch
+on:
+  push:
+    branches: [integrate-p1-20260917]
+permissions:
+  contents: read
+concurrency:
+  group: p1-bootstrap-integration
+  cancel-in-progress: false
+jobs:
+  integrate:
+    if: github.repository == 'AGrosserHH/CausalitySection' && github.ref == 'refs/heads/integrate-p1-20260917'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      OPENAI_API_KEY: ''
+      DJANGO_SECRET_KEY: 'ci-test-only-not-a-deployment-secret'
+      DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1,testserver'
+      MPLBACKEND: Agg
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integrate-p1-20260917
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact, baseline-checked integration edits
+        run: |
+          python scripts/integrate_p1_sources.py --apply
+          python scripts/integrate_p1_sources.py --check
+          python -m compileall -q aitiolin/causalproject/p1
+      - run: pip install -r aitiolin/causalproject/requirements.txt
+      - run: python scripts/check_prototype_language.py && python scripts/check_aitiolin_version.py && python scripts/check_release_contents.py
+      - name: Backend checks and real P1 estimator tests
+        working-directory: aitiolin/causalproject
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          python manage.py test causal_app p0 p1 --noinput
+      - name: Frontend checks
+        working-directory: aitiolin/causal-frontend
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - name: Commit tested wiring to integration branch only
+        run: |
+          git add aitiolin/causal-frontend/src/AppRoot.vue aitiolin/causalproject/causal_project/urls.py aitiolin/causalproject/causal_app/services.py aitiolin/causalproject/p0/service.py
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Integrate tested P1 panel, API routes and explicit estimator failures'
+            git push origin HEAD:refs/heads/integrate-p1-20260917
+          fi
+          git rev-parse HEAD
+          echo 'This workflow never merges or pushes to main.'

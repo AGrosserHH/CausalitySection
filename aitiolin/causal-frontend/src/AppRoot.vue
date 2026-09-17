@@ -150,6 +150,13 @@
 
       <h2 class="flow-title">3 &middot; Results <span class="flow-hint">estimated effect, identification, interpretation</span></h2>
 
+      <P1AnalysisPanel
+        :graph-id="graphId" :variables="variables"
+        :treatment-id="selectedTreatment" :outcome-id="selectedOutcome"
+        :graph-revision="graphRevision" :data-revision="JSON.stringify(agentCleaningResult)"
+        :prepare-graph="persistGraphEdges" @sample-loaded="loadP0Sample"
+      />
+
       <div id="inference-result-anchor">
         <InferenceResult
           :inference-result="inferenceResult"
@@ -267,6 +274,7 @@ import { p0State } from "./p0/client.js"
 import { computed, nextTick, onUnmounted, ref, watch } from "vue"
 
 import CausalityAgentPanel from "./components/CausalityAgentPanel.vue"
+import P1AnalysisPanel from "./components/P1AnalysisPanel.vue"
 import DatasetSidebar from "./components/DatasetSidebar.vue"
 import GraphCanvas from "./components/GraphCanvas.vue"
 import GraphControls from "./components/GraphControls.vue"

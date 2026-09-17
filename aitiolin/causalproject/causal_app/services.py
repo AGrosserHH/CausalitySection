@@ -165,7 +165,6 @@ def select_estimation_method(identified_estimand: Any, requested_method: str | N
     return None
 
 
-@suppress_numeric_estimation_warnings
 def estimate_effect(
     data_frame: pd.DataFrame,
     treatment_name: str,
@@ -173,112 +172,32 @@ def estimate_effect(
     dot_graph: str,
     requested_method: str | None,
 ) -> dict[str, Any]:
-    def to_numeric_or_category_codes(series: pd.Series) -> tuple[pd.Series, str]:
-        numeric_series = pd.to_numeric(series, errors="coerce")
-        if numeric_series.notna().any():
-            return numeric_series, "numeric"
+    """Legacy DoWhy entry point: fail explicitly; never silently switch estimators.
 
-        normalized = series.astype("string").str.strip()
-        normalized = normalized.replace({"": pd.NA, "nan": pd.NA, "none": pd.NA, "null": pd.NA})
-        categorical = normalized.astype("category")
-        coded = categorical.cat.codes.replace(-1, pd.NA).astype("float")
-        return coded, "categorical"
-
-    def estimate_diff_in_means() -> float:
-        treatment_series, treatment_kind = to_numeric_or_category_codes(data_frame[treatment_name])
-        outcome_series, _outcome_kind = to_numeric_or_category_codes(data_frame[outcome_name])
-        valid_rows = treatment_series.notna() & outcome_series.notna()
-        treatment_series = treatment_series[valid_rows]
-        outcome_series = outcome_series[valid_rows]
-
-        if treatment_series.empty:
-            raise ValueError(
-                "Unable to estimate effect: treatment/outcome have no usable rows after preprocessing."
-            )
-
-        unique_treatments = list(pd.unique(treatment_series.dropna()))
-        if len(unique_treatments) < 2:
-            raise ValueError("Unable to estimate effect: treatment has no variation.")
-
-        if treatment_kind == "categorical":
-            most_common_groups = treatment_series.value_counts().index.tolist()
-            low_group = most_common_groups[0]
-            high_group = most_common_groups[1]
-        else:
-            low_group = min(unique_treatments)
-            high_group = max(unique_treatments)
-
-        high_mean = float(outcome_series[treatment_series == high_group].mean())
-        low_mean = float(outcome_series[treatment_series == low_group].mean())
-
-        if pd.isna(high_mean) or pd.isna(low_mean):
-            raise ValueError("Unable to estimate effect: insufficient outcome values in treatment groups.")
-
-        return high_mean - low_mean
-
+    For reviewed encoding, explicit contrasts and uncertainty use the P1 path.
+    """
     causal_model_class = get_causal_model_class()
-    model = causal_model_class(
-        data=data_frame,
-        treatment=treatment_name,
-        outcome=outcome_name,
-        graph=dot_graph,
-    )
-
+    model = causal_model_class(data=data_frame, treatment=treatment_name,
+                               outcome=outcome_name, graph=dot_graph)
     identified_estimand = model.identify_effect()
     if identified_estimand is None:
         raise ValueError("Causal effect not identifiable from the given graph.")
-
     method_name = select_estimation_method(identified_estimand, requested_method)
-    if method_name is None:
-        raise ValueError("No valid estimation method for the identified effect.")
-
+    if method_name is None or method_name == "backdoor.diff_in_means_fallback":
+        raise ValueError("No supported identified method selected. Use an explicitly labelled descriptive comparison separately.")
     try:
         causal_estimate = model.estimate_effect(identified_estimand, method_name=method_name)
+        value = getattr(causal_estimate, "value", getattr(causal_estimate, "estimate", None))
+        if np.ndim(value) != 0 or value is None or not np.isfinite(float(value)):
+            raise ValueError("Estimator did not return a finite scalar effect.")
     except Exception as exc:
-        error_text = str(exc).lower()
-        is_unknown_category_error = "found unknown categories" in error_text and "during transform" in error_text
-        if not is_unknown_category_error:
-            raise
-
-        if method_name != "backdoor.linear_regression":
-            try:
-                fallback_method = "backdoor.linear_regression"
-                causal_estimate = model.estimate_effect(identified_estimand, method_name=fallback_method)
-                method_name = fallback_method
-            except Exception as fallback_exc:
-                fallback_error_text = str(fallback_exc).lower()
-                fallback_unknown_category = (
-                    "found unknown categories" in fallback_error_text
-                    and "during transform" in fallback_error_text
-                )
-                if not fallback_unknown_category:
-                    raise
-
-                manual_effect = estimate_diff_in_means()
-                return {
-                    "estimated_effect": manual_effect,
-                    "method_name": "backdoor.diff_in_means_fallback",
-                    "estimand_string": str(identified_estimand),
-                }
-        else:
-            manual_effect = estimate_diff_in_means()
-            return {
-                "estimated_effect": manual_effect,
-                "method_name": "backdoor.diff_in_means_fallback",
-                "estimand_string": str(identified_estimand),
-            }
-
-    estimated_effect = (
-        causal_estimate.value
-        if hasattr(causal_estimate, "value")
-        else getattr(causal_estimate, "estimate", str(causal_estimate))
-    )
-
-    return {
-        "estimated_effect": estimated_effect,
-        "method_name": method_name,
-        "estimand_string": str(identified_estimand),
-    }
+        raise ValueError(
+            f"The requested estimator ({method_name}) failed. "
+            "No other method or unadjusted mean difference was substituted. "
+            "Review encoding, identification and method compatibility."
+        ) from exc
+    return {"estimated_effect": float(value), "method_name": method_name,
+            "estimand_string": str(identified_estimand)}
 
 
 def _layered_positions(graph: nx.DiGraph) -> tuple[dict[str, tuple[float, float]], int, int]:

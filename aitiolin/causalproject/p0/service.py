@@ -92,7 +92,7 @@ def track_files(workspace, graph, response=None):
 def code_fingerprint():
     root = Path(settings.BASE_DIR)
     hashes = {str(p.relative_to(root)): file_digest(p)
-              for folder in (root / "causal_app", root / "p0", root / "causal_project")
+              for folder in (root / "causal_app", root / "p0", root / "p1", root / "causal_project")
               for p in sorted(folder.rglob("*.py")) if "__pycache__" not in p.parts}
     return digest(hashes)
 

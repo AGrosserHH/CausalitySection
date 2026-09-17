@@ -1,5 +1,29 @@
 # Changelog
 
+## P1 integration — 2026-09-17
+
+P1 module version: `0.1.0-p1.1`. The existing application version is unchanged;
+this is a source integration, not a published release or deployment.
+
+- Add the collapsed Reviewed comparison panel without replacing the existing canvas or agent workflow.
+- Make treatment/control values, binary outcome events, target populations, adjustment,
+  nominal reference categories, interactions and missing-data handling explicit.
+- Add regression and logistic standardized contrasts, propensity weighting and matching,
+  plus a separately labelled descriptive comparison. Report appropriate uncertainty
+  or an explicit unavailable state, with overlap, balance and effective-sample diagnostics.
+- Record named P1 runs in the existing private P0 workspace/export infrastructure.
+- Validate P1 JSON/ZIP bundles and restore into a new owned graph after raw/cleaned
+  data-hash verification; never import executable code or treat old estimates as new runs.
+- Add synthetic randomized-campaign and poor-overlap teaching datasets, methods documentation,
+  real-estimator API tests and the read-only P1 backend/frontend CI workflow.
+- Wire P1 routes and include its source in the analysis fingerprint.
+- Remove silent legacy estimator substitution and unadjusted difference-in-means fallback.
+- Correct the delivered numerical test's malformed list-comprehension bracket before integration.
+
+P1 supports independent observations only. Matching intervals, clustered/panel inference,
+IV/front-door extensions and heterogeneous-effect models are not added. P1 settings do
+not silently change the legacy estimator/agent/robustness configuration.
+
 ## 0.1.0-prototype.1 — 2026-09-15
 
 - Add allowlisted Churn and World Bank sample loading, fixed educational DAG presets and a short guide.

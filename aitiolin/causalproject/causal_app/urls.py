@@ -45,5 +45,5 @@ urlpatterns = [
     path('agent/compare_models/', agent_compare_models, name='agent_compare_models'),
 ]
 
-from p0.guard import protect_urlpatterns
+from .workspace.guard import protect_urlpatterns
 urlpatterns = protect_urlpatterns(urlpatterns)

@@ -69,3 +69,8 @@ class KnowledgeGraphTriple(models.Model):
     subject = models.TextField()
     predicate = models.TextField()
     object = models.TextField()
+
+
+# The private-workspace models live in their own subpackage but belong to this app;
+# importing them here registers them with Django.
+from .workspace.models import Artifact, GraphOwnership, LLMPermit, RunRecord, Workspace  # noqa: E402,F401

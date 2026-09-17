@@ -1,4 +1,4 @@
-from p0.llm import reviewed_completion
+from .workspace.llm import reviewed_completion
 import json
 from collections.abc import Sequence
 

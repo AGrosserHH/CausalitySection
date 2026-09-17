@@ -13,9 +13,9 @@
         <h1 class="title">Causal AI Graph Builder</h1>
         <p class="subtitle">Upload data, let the agent profile/clean/model it (or build by hand), refine the graph on the canvas, estimate the effect, and pressure-test the result.</p>
       </header>
-      <P0WorkspacePanel
+      <WorkspacePanel
         :graph-id="graphId" :has-estimate="Boolean(inferenceResponse)"
-        @sample-loaded="loadP0Sample" @estimate="computeInference"
+        @sample-loaded="loadWorkspaceSample" @estimate="computeInference"
         @check="runRobustness" @compare="runAgentCompareModels"
       />
 
@@ -150,11 +150,11 @@
 
       <h2 class="flow-title">3 &middot; Results <span class="flow-hint">estimated effect, identification, interpretation</span></h2>
 
-      <P1AnalysisPanel
+      <AnalysisPanel
         :graph-id="graphId" :variables="variables"
         :treatment-id="selectedTreatment" :outcome-id="selectedOutcome"
         :graph-revision="graphRevision" :data-revision="JSON.stringify(agentCleaningResult)"
-        :prepare-graph="persistGraphEdges" @sample-loaded="loadP0Sample"
+        :prepare-graph="persistGraphEdges" @sample-loaded="loadWorkspaceSample"
       />
 
       <div id="inference-result-anchor">
@@ -269,12 +269,12 @@
 </template>
 
 <script setup>
-import P0WorkspacePanel from "./components/P0WorkspacePanel.vue"
-import { p0State } from "./p0/client.js"
+import WorkspacePanel from "./components/WorkspacePanel.vue"
+import { workspaceState } from "./workspace/client.js"
 import { computed, nextTick, onUnmounted, ref, watch } from "vue"
 
 import CausalityAgentPanel from "./components/CausalityAgentPanel.vue"
-import P1AnalysisPanel from "./components/P1AnalysisPanel.vue"
+import AnalysisPanel from "./components/AnalysisPanel.vue"
 import DatasetSidebar from "./components/DatasetSidebar.vue"
 import GraphCanvas from "./components/GraphCanvas.vue"
 import GraphControls from "./components/GraphControls.vue"
@@ -726,7 +726,7 @@ async function handleFileUpload(file) {
   }
 }
 
-async function loadP0Sample(data) {
+async function loadWorkspaceSample(data) {
   if (assessmentTimerId) clearTimeout(assessmentTimerId)
   if (agentEstimateTimerId) clearTimeout(agentEstimateTimerId)
   assessmentRequestToken += 1
@@ -1194,7 +1194,7 @@ function assessmentKey() {
     selectedOutcome.value,
     lastPersistedGraph.value.signature,
     agentCleaningResult.value?.cleaned_file || "",
-    p0State.seed,
+    workspaceState.seed,
   ].join("|")
 }
 

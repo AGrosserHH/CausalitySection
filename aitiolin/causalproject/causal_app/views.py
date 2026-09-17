@@ -1,4 +1,4 @@
-from p0.llm import ConsentRequired
+from .workspace.llm import ConsentRequired
 import logging
 import os
 

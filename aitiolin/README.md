@@ -195,7 +195,6 @@ suites.
 
 - Uploaded datasets and generated graph images are written under `causalproject/media/`,
   which is **not** publicly served; they are delivered only through ownership-checked routes.
-- Workspace Python interpreter is configured in `.vscode/settings.json` to use `.venv` at repository root.
 - `python-dotenv` is used to load `.env`; it is listed in `requirements.txt`.
 - The robustness dashboard runs three estimators by default (`linear_regression`, `propensity_score_matching`, `propensity_score_weighting`). `doubly_robust_estimator` is excluded by default due to memory usage in dev.
 

@@ -16,3 +16,6 @@ venv/
 .github/
 .claude/
 
+
+# Test cache
+.pytest_cache/

@@ -191,8 +191,10 @@ def estimate_effect(
         if np.ndim(value) != 0 or value is None or not np.isfinite(float(value)):
             raise ValueError("Estimator did not return a finite scalar effect.")
     except Exception as exc:
+        # Say why: the chained exception reaches the log, never the person running the analysis.
+        cause = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:200].rstrip(".")
         raise ValueError(
-            f"The requested estimator ({method_name}) failed. "
+            f"The requested estimator ({method_name}) failed: {cause}. "
             "No other method or unadjusted mean difference was substituted. "
             "Review encoding, identification and method compatibility."
         ) from exc

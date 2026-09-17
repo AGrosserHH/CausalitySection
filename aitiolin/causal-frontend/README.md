@@ -32,7 +32,6 @@ npm run build
 ## Main Structure
 
 - `src/AppRoot.vue` - root orchestration component (entry point via `main.js`)
-- `src/App.vue` - legacy shell (kept for reference; not active)
 - `src/components/GraphCanvas.vue` - Cytoscape canvas (undo/redo, edge handles, right-drag fallback)
 - `src/components/DatasetSidebar.vue` - CSV upload, variable list, drag-to-canvas
 - `src/components/GraphControls.vue` - layout, delete, zoom, inference trigger

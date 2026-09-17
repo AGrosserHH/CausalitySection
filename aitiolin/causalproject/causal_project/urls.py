@@ -29,6 +29,7 @@ urlpatterns = [
     path('', lambda request: JsonResponse({"status": "ok", "message": "Causal API server running", "api_base": "/api/"}), name='root_status'),
     re_path(r'^\.well-known/.*$', lambda request: HttpResponse(status=204), name='well_known_probe'),
     path('admin/', admin.site.urls),
+    path('api/p1/', include('p1.urls')),
     path('api/p0/', include('p0.urls')),
     path('api/', include('causal_app.urls')),  # /api/...
 ]

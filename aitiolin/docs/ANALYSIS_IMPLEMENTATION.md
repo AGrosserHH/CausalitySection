@@ -54,6 +54,6 @@ Bundle input is data-only, bounded, never extracted and never executed. Checksum
 
 ## History
 
-Delivered as a separate `p1` package on top of `3b43499` and merged in `764a5c2`, then consolidated into `causal_app/analysis/` next to the workspace layer in `causal_app/workspace/`. Identifiers that live inside exported bundles (`aitiolin.p1.v1`, the `p1` payload key, the `p1_estimate` operation) were kept so existing exports stay restorable.
+Delivered as a separate `p1` package on top of `0d5e8da` and merged in `45ae96f`, then consolidated into `causal_app/analysis/` next to the workspace layer in `causal_app/workspace/`. Identifiers that live inside exported bundles (`aitiolin.p1.v1`, the `p1` payload key, the `p1_estimate` operation) were kept so existing exports stay restorable.
 
 The public homepage and legal pages are not overwritten. The new static `aitiolin/website/methods.html` can be published separately. No hosted service or automatic deployment is added.

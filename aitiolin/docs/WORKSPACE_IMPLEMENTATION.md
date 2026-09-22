@@ -80,7 +80,7 @@ Default access expiry is 24 hours, with controls to shorten the remaining period
 python manage.py purge_sessions
 ```
 
-For example, schedule it hourly with its working directory set to `aitiolin/causalproject`. The command skips active reservations; it does not kill an analysis. Expired sessions lose API access even before a scheduled physical purge runs.
+For example, schedule it hourly with its working directory set to `aitiolin/causalproject`. On Windows, `scripts/schedule_purge_sessions.ps1` registers such a task. The command skips active reservations; it does not kill an analysis. Expired sessions lose API access even before a scheduled physical purge runs.
 
 **Delete session data** removes owned graphs, uploads, tracked intermediate/final cleaned copies, graph images, run records and pending approvals. It does not remove source demo CSVs, downloaded bundles, host logs/backups, provider records or unrelated browser storage. A file-removal failure leaves the session locked and returns an error so deletion can be retried; it does not claim success.
 
@@ -109,6 +109,6 @@ Session isolation here is not a comprehensive public-hosting security design. Th
 
 ## CI
 
-The workflow in `.github/workflows/aitiolin-ci.yml` runs on pull requests and pushes to `main`. It checks backend code/migrations/tests and frontend lint/tests/build. Positive rollout/production/compliance-guarantee wording is flagged while appropriate negative disclaimers remain allowed. Tracked runtime files such as `.env`, SQLite databases and uploaded media are rejected by a separate release-content check.
+The workflow in `.github/workflows/aitiolin-ci.yml` runs on pull requests and pushes to `main` and `develop`. A tag matching `VERSION` (`aitiolin-v…`) additionally creates a draft prerelease with a source archive; nothing is published automatically. It checks backend code/migrations/tests and frontend lint/tests/build. Positive rollout/production/compliance-guarantee wording is flagged while appropriate negative disclaimers remain allowed. Tracked runtime files such as `.env`, SQLite databases and uploaded media are rejected by a separate release-content check.
 
 `aitiolin/VERSION` is the version source. Keep it aligned with the frontend package and lockfile, and maintain the changelog. The workflow records the tested Python dependency environment as a CI artifact.

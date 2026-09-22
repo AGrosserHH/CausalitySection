@@ -5,6 +5,28 @@ import uuid
 from django.db import migrations, models
 
 
+# The workspace tables used to belong to a separate "p0" app. An installation that ran that
+# version still holds its rows in p0_* tables; carry them over before those tables are dropped.
+# Column names are identical in both schemas. graphownership and artifact rows get fresh ids,
+# since nothing references them by id. Where the old app never existed this copies nothing.
+OLD_TABLES = [
+    ("workspace", "token_hash, created_at, expires_at, busy, deleting"),
+    ("graphownership", "graph_id, workspace_id, sample_id, cleaning_history"),
+    ("artifact", "workspace_id, graph_id, storage_name"),
+    ("runrecord", "id, workspace_id, graph_id, created_at, analysis_key, operation, payload"),
+    ("llmpermit", "id, workspace_id, payload_hash, operation, expires_at, used"),
+]
+
+
+def copy_rows_from_p0_tables(apps, schema_editor):
+    connection = schema_editor.connection
+    present = set(connection.introspection.table_names())
+    with connection.cursor() as cursor:
+        for table, columns in OLD_TABLES:
+            if f"p0_{table}" in present:
+                cursor.execute(f"INSERT INTO causal_app_{table} ({columns}) SELECT {columns} FROM p0_{table}")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,19 +34,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # These models used to live in a separate "p0" app. Its tables only ever held 24-hour
-        # session data, so start fresh here and remove the leftovers where they exist.
-        migrations.RunSQL(
-            sql=[
-                "DROP TABLE IF EXISTS p0_artifact",
-                "DROP TABLE IF EXISTS p0_graphownership",
-                "DROP TABLE IF EXISTS p0_llmpermit",
-                "DROP TABLE IF EXISTS p0_runrecord",
-                "DROP TABLE IF EXISTS p0_workspace",
-                "DELETE FROM django_migrations WHERE app = 'p0'",
-            ],
-            reverse_sql=migrations.RunSQL.noop,
-        ),
         migrations.CreateModel(
             name="Workspace",
             fields=[
@@ -165,5 +174,18 @@ class Migration(migrations.Migration):
                     )
                 ],
             },
+        ),
+        migrations.RunPython(copy_rows_from_p0_tables, migrations.RunPython.noop),
+        # The old tables are no longer read; drop them and the p0 app's migration bookkeeping.
+        migrations.RunSQL(
+            sql=[
+                "DROP TABLE IF EXISTS p0_artifact",
+                "DROP TABLE IF EXISTS p0_graphownership",
+                "DROP TABLE IF EXISTS p0_llmpermit",
+                "DROP TABLE IF EXISTS p0_runrecord",
+                "DROP TABLE IF EXISTS p0_workspace",
+                "DELETE FROM django_migrations WHERE app = 'p0'",
+            ],
+            reverse_sql=migrations.RunSQL.noop,
         ),
     ]

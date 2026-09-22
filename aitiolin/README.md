@@ -128,6 +128,9 @@ every existing endpoint behaves, so read this before using the API directly.
 - **Graphs created before this version have no owner** and are deliberately not adopted by the
   first visitor. They stay in the database but are unreachable through the protected API. Keep a
   backup and re-upload the datasets you still need.
+- **Upgrading from the 15–17 September layout** (separate `p0`/`p1` apps): `python manage.py migrate`
+  carries sessions, ownership links, tracked files and run records over into the new tables before
+  dropping the old ones. Back up the database and `media/` first all the same.
 
 ### Workspace endpoints
 
@@ -163,6 +166,11 @@ working directory set to `causalproject`:
 python manage.py purge_sessions
 ```
 
+On Windows, `scripts/schedule_purge_sessions.ps1` registers exactly that as an hourly Task
+Scheduler job running from `.venv`. Running the script again updates the task;
+`Unregister-ScheduledTask -TaskName "aitiolin purge_sessions"` removes it. The task runs only
+while you are logged on and catches up after a missed slot.
+
 If a worker crashed mid-write it can leave a reservation set. Stop **all** application workers
 before recovering, never while a request can still write files:
 
@@ -183,7 +191,9 @@ purge free slots; existing sessions are unaffected.
 `VERSION` is the version source of truth; keep `causal-frontend/package.json`, its lockfile and
 `CHANGELOG.md` aligned. The checks in `../scripts/` and the workflow in `../.github/workflows/`
 run terminology, version and tracked-runtime-artifact checks alongside the backend and frontend
-suites.
+suites. Pushing a tag that matches `VERSION`, for example `aitiolin-v0.1.0-prototype.1`, additionally
+creates a **draft** prerelease carrying a source archive once those checks pass; nothing is
+published until it is edited and published on GitHub.
 
 ## Example Datasets
 

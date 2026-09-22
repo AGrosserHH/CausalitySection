@@ -1,5 +1,16 @@
 # Changelog
 
+## Upgrade safety, draft prereleases and scheduled cleanup — 2026-09-22
+
+- Migration `0010_workspace_models` now carries rows over from the tables of the former `p0` app
+  before dropping them, so an installation that ran the 15–17 September version keeps its sessions,
+  ownership links, tracked files and run records. Fresh installations are unaffected. A migration
+  test covers the copy.
+- Restore the draft-prerelease job that was lost when `.github/` was untracked: a tag matching
+  `VERSION` builds a source archive and creates a draft prerelease after the checks pass.
+- Add `scripts/schedule_purge_sessions.ps1`, which registers the hourly `purge_sessions` Task
+  Scheduler job on Windows.
+
 ## Consolidation — 2026-09-17
 
 Structure only; no behaviour change. All five comparison estimators and the legacy estimator return

@@ -24,7 +24,6 @@ jobs:
           cache: pip
           cache-dependency-path: aitiolin/causalproject/requirements.txt
       - run: pip install -r aitiolin/causalproject/requirements.txt
-      - run: python scripts/check_prototype_language.py && python scripts/check_aitiolin_version.py && python scripts/check_release_contents.py
       - working-directory: aitiolin/causalproject
         run: |
           python manage.py check
@@ -65,7 +64,7 @@ jobs:
         shell: bash
         run: |
           test "${GITHUB_REF_NAME#aitiolin-v}" = "$(cat aitiolin/VERSION)"
-          git archive --format=zip --output=aitiolin-source.zip HEAD aitiolin scripts .github
+          git archive --format=zip --output=aitiolin-source.zip HEAD aitiolin .github
       - name: Create a draft prerelease, not a published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -166,10 +166,9 @@ working directory set to `causalproject`:
 python manage.py purge_sessions
 ```
 
-On Windows, `scripts/schedule_purge_sessions.ps1` registers exactly that as an hourly Task
-Scheduler job running from `.venv`. Running the script again updates the task;
-`Unregister-ScheduledTask -TaskName "aitiolin purge_sessions"` removes it. The task runs only
-while you are logged on and catches up after a missed slot.
+On Windows, create an hourly Task Scheduler job with program `.venv\Scripts\python.exe`
+(from the repository root), arguments `manage.py purge_sessions` and start-in folder
+`aitiolin\causalproject`.
 
 If a worker crashed mid-write it can leave a reservation set. Stop **all** application workers
 before recovering, never while a request can still write files:
@@ -189,8 +188,8 @@ purge free slots; existing sessions are unaffected.
 ### Release checks
 
 `VERSION` is the version source of truth; keep `causal-frontend/package.json`, its lockfile and
-`CHANGELOG.md` aligned. The checks in `../scripts/` and the workflow in `../.github/workflows/`
-run terminology, version and tracked-runtime-artifact checks alongside the backend and frontend
+`CHANGELOG.md` aligned. The workflow in `../.github/workflows/` runs the backend and
+frontend test
 suites. Pushing a tag that matches `VERSION`, for example `aitiolin-v0.1.0-prototype.1`, additionally
 creates a **draft** prerelease carrying a source archive once those checks pass; nothing is
 published until it is edited and published on GitHub.

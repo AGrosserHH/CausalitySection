@@ -24,6 +24,62 @@ jobs:
           cache: pip
           cache-dependency-path: aitiolin/causalproject/requirements.txt
       - run: pip install -r aitiolin/causalproject/requirements.txt
+      - name: Release hygiene checks
+        run: |
+          python - <<'PY'
+          # Positive claims the prototype must not make; negated disclaimers are allowed.
+          import re, sys
+          from pathlib import Path
+          PATTERNS = [r"\bbefore rollout\b", r"\bproduction[- ]ready\b",
+                      r"\bguarantee[sd]?\s+(?:legal\s+|regulatory\s+)?compliance\b",
+                      r"\bproves? causation\b", r"\bprobability of causal correctness:\s*\d"]
+          NEGATED = re.compile(r"\b(?:not|never|no|cannot|doesn't|isn't|without)\b", re.I)
+          failed = []
+          for base in (Path("aitiolin/causal-frontend/src"), Path("aitiolin/website")):
+              for path in base.rglob("*"):
+                  if path.suffix not in (".vue", ".html", ".js", ".mjs") or ".test." in path.name:
+                      continue
+                  for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                      for pattern in PATTERNS:
+                          for match in re.finditer(pattern, line, re.I):
+                              prefix = re.split(r"[.;!?]", line[:match.start()])[-1][-100:]
+                              if not NEGATED.search(prefix):
+                                  failed.append(f"{path}:{number}: review {match.group()!r}")
+          if failed:
+              sys.exit("\n".join(failed))
+          print("Prototype language checks passed.")
+          PY
+          python - <<'PY'
+          # VERSION, the frontend package, its lockfile and the changelog must agree.
+          import json, re
+          from pathlib import Path
+          root = Path("aitiolin")
+          version = (root / "VERSION").read_text().strip()
+          if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+              raise SystemExit("Invalid VERSION.")
+          for name in ("package.json", "package-lock.json"):
+              if json.loads((root / "causal-frontend" / name).read_text())["version"] != version:
+                  raise SystemExit(f"Version mismatch in {name}")
+          if f"## {version}" not in (root / "CHANGELOG.md").read_text(encoding="utf-8"):
+              raise SystemExit("Current version lacks a changelog entry.")
+          print(f"Version metadata aligned: {version}")
+          PY
+          python - <<'PY'
+          # No private runtime artefacts in tracked files. Intentional sample CSVs are allowed.
+          import subprocess
+          from pathlib import PurePosixPath
+          failures = []
+          for item in filter(None, subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")):
+              path = PurePosixPath(item)
+              if (path.name == ".env" or path.name.startswith(".env.") and path.name != ".env.example"
+                      or path.suffix in {".sqlite3", ".sqlite", ".log", ".pyc"}
+                      or "media" in path.parts and "causalproject" in path.parts
+                      or "node_modules" in path.parts or "__pycache__" in path.parts):
+                  failures.append(item)
+          if failures:
+              raise SystemExit("Remove private/generated runtime artefacts from tracked files:\n" + "\n".join(failures))
+          print("Tracked runtime-artifact check passed. This is not a full secret scanner.")
+          PY
       - working-directory: aitiolin/causalproject
         run: |
           python manage.py check

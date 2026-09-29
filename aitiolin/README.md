@@ -151,9 +151,11 @@ reproducibility guarantee.
 ### Reviewed comparisons
 
 `/api/analysis/…` adds explicit treatment/control comparisons with reviewed encoding, confidence
-intervals where supported and overlap/balance diagnostics, recorded as workspace runs. Routes and the
-specification format are in [docs/ANALYSIS_API.md](docs/ANALYSIS_API.md); methods and limits are in
-[docs/ANALYSIS_IMPLEMENTATION.md](docs/ANALYSIS_IMPLEMENTATION.md). Backend code lives in
+intervals where supported and overlap/balance diagnostics, recorded as workspace runs. Routes:
+`schema/`, `estimate/`, `history/`, `compare/`, `bundles/preview/`, `bundles/restore/` and
+`examples/<id>/load/`. The specification format is defined by `validate_spec` in
+`causalproject/causal_app/analysis/engine.py`; methods and limits are described in
+[website/methods.html](website/methods.html). Backend code lives in
 `causalproject/causal_app/analysis/`; the workspace layer is `causalproject/causal_app/workspace/`.
 
 ### Retention and cleanup
@@ -188,8 +190,8 @@ purge free slots; existing sessions are unaffected.
 ### Release checks
 
 `VERSION` is the version source of truth; keep `causal-frontend/package.json`, its lockfile and
-`CHANGELOG.md` aligned. The workflow in `../.github/workflows/` runs the backend and
-frontend test
+`CHANGELOG.md` aligned. The workflow in `../.github/workflows/` checks exactly that, together with
+terminology and tracked runtime files, alongside the backend and frontend test
 suites. Pushing a tag that matches `VERSION`, for example `aitiolin-v0.1.0-prototype.1`, additionally
 creates a **draft** prerelease carrying a source archive once those checks pass; nothing is
 published until it is edited and published on GitHub.

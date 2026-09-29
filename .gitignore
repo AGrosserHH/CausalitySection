@@ -20,4 +20,4 @@ venv/
 # Test cache
 .pytest_cache/
 
-scripts/
+

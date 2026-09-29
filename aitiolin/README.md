@@ -181,8 +181,8 @@ purge free slots; existing sessions are unaffected.
 ### Release checks
 
 `VERSION` is the version source of truth; keep `causal-frontend/package.json`, its lockfile and
-`CHANGELOG.md` aligned. The checks in `../scripts/` and the workflow in `../.github/workflows/`
-run terminology, version and tracked-runtime-artifact checks alongside the backend and frontend
+`CHANGELOG.md` aligned. The workflow in `../.github/workflows/` runs the backend and
+frontend test
 suites.
 
 ## Example Datasets

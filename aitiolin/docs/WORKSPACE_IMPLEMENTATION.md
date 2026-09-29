@@ -25,9 +25,6 @@ Use the existing project virtual environment, or create a separate Python 3.11 e
 
 ```sh
 python -m pip install -r aitiolin/causalproject/requirements.txt
-python scripts/check_prototype_language.py
-python scripts/check_aitiolin_version.py
-python scripts/check_release_contents.py
 
 cd aitiolin/causalproject
 python manage.py migrate

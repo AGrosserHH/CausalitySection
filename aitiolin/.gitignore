@@ -17,6 +17,5 @@ causalproject/logs/
 causal-frontend/node_modules/
 causal-frontend/dist/
 
-# Website legal pages carry a postal address: keep them local and upload them with the site
-website/impressum.html
-website/privacy.html
+# The aitiolin.io pages live outside this repository; never commit them here
+website/

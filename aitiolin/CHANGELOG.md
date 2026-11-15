@@ -14,14 +14,8 @@
   local `.env` files without `DJANGO_DEBUG=True` need that line added.
 - Fix stale `CausalGUI/` paths, hard-coded local paths and the claim that `.env` already exists in
   the READMEs.
-- Add the aitiolin.io source to `website/`: landing, methods and disclaimer pages plus screenshots, as
-  published. The Impressum and privacy pages contain a postal address and are git-ignored; they stay
-  in local copies of the folder only. The earlier technical methods page becomes
-  `website/methods-reference.html`. Add favicons, a social preview image, canonical links, Open Graph
-  tags, structured data, `robots.txt` and `sitemap.xml`, and give the 11 October news entry a
-  headline. In the local Impressum and privacy pages, add `noindex`, fix paragraphs nested inside
-  paragraphs, and drop the placeholder highlight from the filled-in hosting provider. None of this
-  is deployed yet.
+- Remove `website/`. The aitiolin.io pages, including the former technical methods page, are kept
+  outside this repository; the README links to the published methods guide instead.
 
 ## Upgrade safety, draft prereleases and scheduled cleanup — 2026-09-22
 

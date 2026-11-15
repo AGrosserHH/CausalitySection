@@ -154,9 +154,8 @@ reproducibility guarantee.
 intervals where supported and overlap/balance diagnostics, recorded as workspace runs. Routes:
 `schema/`, `estimate/`, `history/`, `compare/`, `bundles/preview/`, `bundles/restore/` and
 `examples/<id>/load/`. The specification format is defined by `validate_spec` in
-`causalproject/causal_app/analysis/engine.py`. Methods and limits are described in detail in
-[website/methods-reference.html](website/methods-reference.html); the shorter guide published on
-aitiolin.io is [website/methods.html](website/methods.html). Backend code lives in
+`causalproject/causal_app/analysis/engine.py`; methods and limits are described in the
+[methods guide on aitiolin.io](https://aitiolin.io/methods.html). Backend code lives in
 `causalproject/causal_app/analysis/`; the workspace layer is `causalproject/causal_app/workspace/`.
 
 ### Retention and cleanup

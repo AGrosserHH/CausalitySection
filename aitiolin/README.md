@@ -20,8 +20,8 @@ This is the canonical setup and operations runbook for the app. For repository-l
 cd causalproject
 ..\..\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-# .env already exists - set your key:
-# edit .env and fill in OPENAI_API_KEY=sk-proj-...
+copy .env.example .env
+# optional: edit .env and fill in OPENAI_API_KEY=sk-proj-...
 python manage.py migrate
 python manage.py runserver 127.0.0.1:8000
 ```
@@ -34,8 +34,8 @@ Backend runs at `http://127.0.0.1:8000`.
 
 Configured in `causalproject/.env`:
 
-- `DJANGO_SECRET_KEY`
-- `DJANGO_DEBUG`
+- `DJANGO_SECRET_KEY` - required whenever debug is off; the backend refuses to start without it
+- `DJANGO_DEBUG` (default: off) - `.env.example` turns it on for local development
 - `DJANGO_ALLOWED_HOSTS`
 - `DJANGO_CORS_ALLOWED_ORIGINS`
 - `DJANGO_CSRF_TRUSTED_ORIGINS`
@@ -154,8 +154,9 @@ reproducibility guarantee.
 intervals where supported and overlap/balance diagnostics, recorded as workspace runs. Routes:
 `schema/`, `estimate/`, `history/`, `compare/`, `bundles/preview/`, `bundles/restore/` and
 `examples/<id>/load/`. The specification format is defined by `validate_spec` in
-`causalproject/causal_app/analysis/engine.py`; methods and limits are described in
-[website/methods.html](website/methods.html). Backend code lives in
+`causalproject/causal_app/analysis/engine.py`. Methods and limits are described in detail in
+[website/methods-reference.html](website/methods-reference.html); the shorter guide published on
+aitiolin.io is [website/methods.html](website/methods.html). Backend code lives in
 `causalproject/causal_app/analysis/`; the workspace layer is `causalproject/causal_app/workspace/`.
 
 ### Retention and cleanup
@@ -242,16 +243,16 @@ Important behavior:
 - The Copilot panel shows per-edge confidence, verifier breakdown (LLM prior, marginal/partial correlation, pair coverage, temporal precedence), and a recommended action (accept / review / reject).
 - The Identification panel shows DAG cycle status, admissibility checklist, adjustment sets, IV/frontdoor candidates, open/blocked backdoor paths, and sample/variation diagnostics.
 - The Robustness Dashboard shows estimator comparison, refuter results (placebo treatment, dummy outcome, random common cause, data subsample), linear sensitivity sweep, and an overall robustness score.
-- Time Series mode requires a time column and at least one entity column; it runs per-window lag analysis and returns per-edge stability scores across windows.
+- Time Series mode requires a time column; an entity column is optional. It splits the time range into consecutive windows shared by all entities (each with about the same number of distinct timestamps), lags each entity's full history so a window keeps the earlier values it depends on, and returns per-edge lagged associations and stability scores across windows. These are lagged correlations, not causal tests.
 
 ## VS Code Shell Quickstart
 
-Use two integrated terminals:
+Use two integrated terminals, both opened at the repository root:
 
 Terminal 1 (backend):
 
 ```powershell
-Set-Location "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causalproject"
+Set-Location aitiolin\causalproject
 ..\..\.venv\Scripts\Activate.ps1
 python manage.py migrate
 python manage.py runserver 127.0.0.1:8000
@@ -260,7 +261,7 @@ python manage.py runserver 127.0.0.1:8000
 Terminal 2 (frontend):
 
 ```powershell
-Set-Location "C:\Users\agros\Programming\Python\CausalitySection\CausalGUI\causal-frontend"
+Set-Location aitiolin\causal-frontend
 npm run dev
 ```
 

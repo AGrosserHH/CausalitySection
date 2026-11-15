@@ -1,6 +1,6 @@
 # causal-frontend
 
-Vue 3 + Vite client for the CausalGUI project.
+Vue 3 + Vite client for aitiolin.
 
 ## Requirements
 

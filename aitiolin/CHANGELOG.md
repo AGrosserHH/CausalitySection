@@ -1,5 +1,28 @@
 # Changelog
 
+## Time-series windows, safer defaults and documentation fixes — 2026-11-15
+
+- Fix time-series windows. Rows were sorted by entity and then cut by position, so with more than
+  one entity a "window" held some entities' whole history instead of a period of time, and its start
+  and end dates were wrong. Windows are now consecutive periods shared by all entities, each with about
+  the same number of distinct timestamps. Lags are taken over each entity's full history, so a window
+  keeps the earlier source values its first targets depend on. Results for multi-entity data change.
+  The response reports the number of windows formed, the number requested, and a diagnostic when
+  there are fewer distinct timestamps than requested windows.
+- `DJANGO_DEBUG` now defaults to off. With debug off, the backend refuses to start until a
+  `DJANGO_SECRET_KEY` is set. `.env.example` still turns debug on for local development; existing
+  local `.env` files without `DJANGO_DEBUG=True` need that line added.
+- Fix stale `CausalGUI/` paths, hard-coded local paths and the claim that `.env` already exists in
+  the READMEs.
+- Add the aitiolin.io source to `website/`: landing, methods and disclaimer pages plus screenshots, as
+  published. The Impressum and privacy pages contain a postal address and are git-ignored; they stay
+  in local copies of the folder only. The earlier technical methods page becomes
+  `website/methods-reference.html`. Add favicons, a social preview image, canonical links, Open Graph
+  tags, structured data, `robots.txt` and `sitemap.xml`, and give the 11 October news entry a
+  headline. In the local Impressum and privacy pages, add `noindex`, fix paragraphs nested inside
+  paragraphs, and drop the placeholder highlight from the filled-in hosting provider. None of this
+  is deployed yet.
+
 ## Upgrade safety, draft prereleases and scheduled cleanup — 2026-09-22
 
 - Migration `0010_workspace_models` now carries rows over from the tables of the former `p0` app

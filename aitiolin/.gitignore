@@ -16,3 +16,7 @@ causalproject/logs/
 # Frontend
 causal-frontend/node_modules/
 causal-frontend/dist/
+
+# Website legal pages carry a postal address: keep them local and upload them with the site
+website/impressum.html
+website/privacy.html

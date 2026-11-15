@@ -378,6 +378,7 @@ class TimeSeriesAnalysisResponseSerializer(serializers.Serializer):
     time_column = serializers.CharField()
     entity_column = serializers.CharField(required=False, allow_blank=True)
     window_count = serializers.IntegerField()
+    requested_window_count = serializers.IntegerField(required=False)
     max_lag = serializers.IntegerField()
     edge_stability = TimeSeriesEdgeStabilitySerializer(many=True)
     dynamic_graphs = DynamicGraphWindowSerializer(many=True)

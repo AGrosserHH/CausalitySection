@@ -1075,26 +1075,36 @@ def analyze_time_series_graph(
     numeric = preprocess_data_frame_for_causal(working)
     numeric["__time__"] = parsed_time
     numeric["__entity__"] = entity_series
+    # Rows without a parsable timestamp cannot be placed in a window or lagged.
+    numeric = numeric[numeric["__time__"].notna()]
     numeric = numeric.sort_values(["__entity__", "__time__"]).reset_index(drop=True)
 
     # Require enough rows for rolling windows without rejecting compact datasets.
     if len(numeric.index) < max(window_count * 2, 6):
         raise ValueError("Time-series mode requires more rows to compute stable rolling windows.")
 
+    # Windows are consecutive periods shared by every entity. Splitting the
+    # distinct timestamps (not the rows) keeps each timestamp, and therefore
+    # every entity's observation at that time, inside exactly one window.
+    time_rank = numeric["__time__"].rank(method="dense")
+    distinct_times = int(time_rank.max())
+    if distinct_times < 2:
+        raise ValueError("Time-series mode requires at least two distinct timestamps.")
+    # Each window covers about the same number of distinct timestamps. With at
+    # least as many timestamps as windows, every window is non-empty.
+    effective_windows = min(window_count, distinct_times)
+    numeric["__window__"] = ((time_rank - 1) * effective_windows // distinct_times).astype(int)
+
     window_edges: list[dict[str, Any]] = []
-    chunk_size = max(2, len(numeric.index) // window_count)
-    for index in range(window_count):
-        start_index = index * chunk_size
-        end_index = len(numeric.index) if index == window_count - 1 else min(len(numeric.index), (index + 1) * chunk_size)
-        chunk = numeric.iloc[start_index:end_index].copy()
-        if chunk.empty:
-            continue
+    for index, window_id in enumerate(sorted(numeric["__window__"].unique())):
+        rows = numeric.index[numeric["__window__"] == window_id]
+        window_times = numeric.loc[rows, "__time__"]
         window_edges.append(
             {
                 "label": f"Window {index + 1}",
-                "start": chunk["__time__"].iloc[0].isoformat(),
-                "end": chunk["__time__"].iloc[-1].isoformat(),
-                "frame": chunk,
+                "start": window_times.min().isoformat(),
+                "end": window_times.max().isoformat(),
+                "rows": rows,
             }
         )
 
@@ -1120,21 +1130,33 @@ def analyze_time_series_graph(
         lag_choices: list[int | None] = []
         lag_signs: list[float] = []
 
+        # Lag each entity's full history before windowing, so a window keeps
+        # the earlier source values its first targets depend on. A row belongs
+        # to the window in which its target is observed.
+        source_values = pd.to_numeric(numeric[source], errors="coerce")
+        target_values = pd.to_numeric(numeric[target], errors="coerce")
+        lagged_sources = {
+            lag: source_values.groupby(numeric["__entity__"]).shift(lag)
+            for lag in range(1, max_lag + 1)
+        }
+
         for window_index, window in enumerate(window_edges):
-            frame = window["frame"]
+            rows = window["rows"]
             best_strength = 0.0
             best_lag = None
             best_sign = 0.0
 
             for lag in range(1, max_lag + 1):
                 correlations: list[float] = []
-                for _entity, entity_frame in frame.groupby("__entity__"):
-                    aligned = pd.DataFrame(
-                        {
-                            "source": pd.to_numeric(entity_frame[source], errors="coerce").shift(lag),
-                            "target": pd.to_numeric(entity_frame[target], errors="coerce"),
-                        }
-                    ).dropna()
+                window_pairs = pd.DataFrame(
+                    {
+                        "source": lagged_sources[lag].loc[rows],
+                        "target": target_values.loc[rows],
+                        "entity": numeric.loc[rows, "__entity__"],
+                    }
+                )
+                for _entity, entity_pairs in window_pairs.groupby("entity"):
+                    aligned = entity_pairs[["source", "target"]].dropna()
                     if len(aligned.index) < 3:
                         continue
                     corr = aligned["source"].corr(aligned["target"])
@@ -1213,13 +1235,26 @@ def analyze_time_series_graph(
             "status": "good",
             "details": "Observed timestamp range across the dataset.",
         },
+        {
+            "label": "Windows",
+            "value": len(window_edges),
+            "status": "good" if len(window_edges) == window_count else "watch",
+            "details": (
+                "Consecutive periods with about the same number of distinct "
+                "timestamps, shared by all entities."
+                if len(window_edges) == window_count
+                else f"Only {distinct_times} distinct timestamps, so fewer windows than the "
+                f"{window_count} requested could be formed."
+            ),
+        },
     ]
 
     return {
         "mode": "time-series",
         "time_column": time_column,
         "entity_column": entity_column,
-        "window_count": window_count,
+        "window_count": len(window_edges),
+        "requested_window_count": window_count,
         "max_lag": max_lag,
         "edge_stability": edge_stability,
         "dynamic_graphs": dynamic_graphs,

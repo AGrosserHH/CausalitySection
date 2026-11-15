@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -37,10 +38,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-me")
+INSECURE_DEV_SECRET_KEY = "django-insecure-dev-key-change-me"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", INSECURE_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Off unless .env turns it on, so an installation that omits the setting is not exposed.
+DEBUG = env_bool("DJANGO_DEBUG", False)
+
+if not DEBUG and SECRET_KEY == INSECURE_DEV_SECRET_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY is not set. For local development set DJANGO_DEBUG=True in "
+        "causalproject/.env (see .env.example); otherwise set a strong DJANGO_SECRET_KEY."
+    )
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 

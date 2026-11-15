@@ -1,45 +1,371 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>aitiolin — Reviewed comparisons and method limitations</title>
-<meta name="description" content="Reviewed comparison methods, explicit causal assumptions, uncertainty, group comparability and data-only reproducibility for the private aitiolin prototype.">
-<style>
-:root{--text:#121826;--muted:#525f7a;--brand:#3559e0;--line:#d8dfeb;--light:#f6f8fb}*{box-sizing:border-box}body{margin:0;font:1rem/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:#fff}a{color:var(--brand);text-underline-offset:.2em}header,main,footer{width:min(1060px,calc(100% - 2rem));margin:auto}header{padding:1.4rem 0;display:flex;gap:1rem;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid var(--line)}header a{font-weight:700}main{padding:2.5rem 0}h1,h2,h3{line-height:1.2;letter-spacing:-.02em}h1{font-size:clamp(2rem,5vw,3rem);max-width:850px}h2{font-size:1.55rem;margin-top:2rem}p{max-width:84ch}small,.muted{color:var(--muted)}.tag{display:inline-block;border:1px solid var(--line);background:var(--light);border-radius:999px;padding:.35rem .8rem;font-size:.85rem}.notice{border-left:3px solid var(--brand);padding:.8rem 1rem;background:var(--light)}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:1.2rem 0}table{border-collapse:collapse;width:100%;min-width:680px}th,td{padding:1rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{background:var(--light)}caption{padding:1rem;text-align:left;font-weight:600}code{font-size:.9em;overflow-wrap:anywhere}details{padding:.8rem 1rem;border:1px solid var(--line);border-radius:12px;margin:.8rem 0}summary{font-weight:650;cursor:pointer;padding:.3rem 0}li{margin:.45rem 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:1rem}.card{padding:1rem 1.2rem;border:1px solid var(--line);border-radius:12px}.card h3{margin:.3rem 0}.skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;background:#fff;padding:.6rem;z-index:10}:focus-visible{outline:2px solid var(--brand);outline-offset:4px}footer{padding:1.5rem 0 3rem;border-top:1px solid var(--line)}footer nav{display:flex;flex-wrap:wrap;gap:1rem}section{scroll-margin-top:1rem}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Understand methods and results — aitiolin</title>
+  <meta name="description" content="A compact guide to aitiolin’s Reviewed comparison feature: treatment definitions, effect estimates, uncertainty, diagnostics and limitations.">
+  <link rel="canonical" href="https://aitiolin.io/methods.html">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="aitiolin">
+  <meta property="og:title" content="Understand methods and results — aitiolin">
+  <meta property="og:description" content="A compact guide to aitiolin’s Reviewed comparison feature: treatment definitions, effect estimates, uncertainty, diagnostics and limitations.">
+  <meta property="og:url" content="https://aitiolin.io/methods.html">
+  <meta property="og:image" content="https://aitiolin.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="aitiolin, a causal AI prototype for private analysis and learning, with a small example causal graph">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root{
+      --bg-alt:#f6f8fb;
+      --text:#121826;
+      --muted:#525f7a;
+      --line:#d8dfeb;
+      --brand:#3559e0;
+      --brand-2:#6d7ff2;
+      --shadow:0 16px 50px rgba(15,23,42,.10);
+      --max:1180px;
+      --nav-h:72px;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at top left,rgba(53,89,224,.14),transparent 36rem),
+        radial-gradient(circle at top right,rgba(109,127,242,.10),transparent 34rem),
+        #fff;
+      line-height:1.6;
+    }
+    a{color:inherit;text-decoration:none}
+    p{margin:0 0 1rem;color:var(--muted)}
+    h1,h2,h3{margin:0 0 1rem;line-height:1.12;letter-spacing:-.025em}
+    h1{font-size:clamp(2.2rem,5.6vw,4.7rem)}
+    h2{font-size:clamp(1.6rem,3.4vw,2.7rem)}
+    section{padding:5.5rem 0}
+
+    .container{width:min(calc(100% - 2rem),var(--max));margin-inline:auto}
+    .skip-link{position:absolute;left:-9999px}
+    .skip-link:focus{left:1rem;top:1rem;position:fixed;background:#fff;border:2px solid var(--brand);border-radius:12px;padding:.8rem 1rem;z-index:9999}
+    .site-header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.82);border-bottom:1px solid rgba(216,223,235,.78);backdrop-filter:blur(14px) saturate(150%)}
+    .nav{min-height:var(--nav-h);display:flex;align-items:center;justify-content:space-between;gap:1rem}
+    .brand{display:flex;align-items:center;gap:.75rem;font-weight:850;letter-spacing:-.03em}
+    .brand-mark{width:42px;height:42px;border-radius:14px;background:radial-gradient(circle at 31% 30%,#fff 0 18%,transparent 19%),linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 14px 30px rgba(53,89,224,.28),inset 0 1px 0 rgba(255,255,255,.5)}
+    .nav-toggle{border:1px solid var(--line);background:#fff;border-radius:12px;padding:.75rem .95rem;font-weight:700}
+    .nav-links{display:none;position:absolute;top:calc(var(--nav-h) - 1px);left:0;right:0;background:#fff;border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+    .nav-links[data-open="true"]{display:block}
+    .nav-links ul{list-style:none;margin:0;padding:1rem;display:grid;gap:.35rem}
+    .nav-links a{display:block;padding:.8rem 1rem;border-radius:12px;color:var(--muted);font-weight:700}
+    .nav-links a:hover,.nav-links a[aria-current="page"]{background:var(--bg-alt);color:var(--text)}
+    .actions{display:none;gap:.75rem;align-items:center}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:46px;padding:.85rem 1.15rem;border-radius:15px;border:1px solid transparent;font-weight:800}
+    .btn-secondary{background:#fff;border-color:var(--line)}
+
+    .hero{padding-top:6.2rem;padding-bottom:3rem}
+    .hero-copy{max-width:820px}
+    .hero-copy p{font-size:1.08rem;max-width:72ch}
+    .eyebrow{display:inline-flex;align-items:center;gap:.45rem;margin-bottom:.9rem;color:var(--brand);background:rgba(53,89,224,.08);border:1px solid rgba(53,89,224,.14);padding:.46rem .72rem;border-radius:999px;font-size:.86rem;font-weight:850}
+
+    .aitiolin-methods{width:100%;margin:0;padding:0;color:var(--text);font:inherit;overflow-wrap:anywhere}
+    .aitiolin-methods h1{margin:0 0 1rem}
+    .aitiolin-methods p{margin:0 0 1rem}
+    .aitiolin-methods a{color:var(--brand);text-decoration:underline;text-underline-offset:.2em}
+    .aitiolin-methods .am-muted{color:var(--muted)}
+    .aitiolin-methods .am-notice{margin:1.25rem 0;padding:1rem 1.1rem;border-left:4px solid var(--brand);border-radius:0 16px 16px 0;background:rgba(53,89,224,.055);color:var(--muted)}
+    .guide-section{padding-top:1.5rem}
+    .am-guide{max-width:900px}
+    .aitiolin-methods details{margin-block:.8rem;background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:0 10px 28px rgba(15,23,42,.05);overflow:hidden}
+    .aitiolin-methods summary{padding:1.1rem 1.25rem;cursor:pointer;color:var(--text)}
+    .aitiolin-methods summary h2{display:inline;margin:0;font-size:1.08rem;line-height:1.4}
+    .aitiolin-methods .am-content{padding:0 1.25rem 1.25rem}
+    .aitiolin-methods ul{padding-left:1.25rem}
+    .aitiolin-methods li{margin-block:.45rem;color:var(--muted)}
+    .aitiolin-methods .am-table-scroll{overflow-x:auto;margin-block:1rem}
+    .aitiolin-methods table{width:100%;min-width:480px;border-collapse:collapse}
+    .aitiolin-methods caption{padding-bottom:.5rem;text-align:left;font-weight:600}
+    .aitiolin-methods th,.aitiolin-methods td{padding:.75rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+    .aitiolin-methods thead{background:var(--bg-alt)}
+    .aitiolin-methods :focus-visible{outline:3px solid var(--brand);outline-offset:3px}
+    .aitiolin-methods .am-footer{margin-top:2rem;padding:1.5rem;background:rgba(255,255,255,.78);border:1px solid rgba(216,223,235,.9);border-radius:22px;box-shadow:0 10px 28px rgba(15,23,42,.05)}
+    .aitiolin-methods .am-footer h2{font-size:1.35rem}
+
+    .site-footer{background:#0b1020;color:rgba(255,255,255,.92);padding:3.2rem 0 2rem}
+    .site-footer p,.site-footer a{color:rgba(255,255,255,.72)}
+    .footer-grid{display:grid;gap:1rem}
+    .footer-links{display:grid;gap:.55rem}
+    .footer-links a:hover{color:#fff}
+    .footer-bottom{margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.12);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem}
+
+    @media (min-width:760px){
+      .nav-toggle{display:none}
+      .nav-links{display:block!important;position:static;background:transparent;border:0;box-shadow:none}
+      .nav-links ul{display:flex;align-items:center;padding:0;gap:.1rem}
+      .actions{display:flex}
+      .footer-grid{grid-template-columns:1.35fr .8fr .8fr}
+    }
+    @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  </style>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-<header><a href="index.html">aitiolin</a><a href="https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin" rel="noopener noreferrer">Project repository</a></header>
-<main id="main">
-<span class="tag">Reviewed comparisons · source version 0.1.0-prototype.1 · experimental</span>
-<h1>Define the comparison.<br>Then inspect the evidence.</h1>
-<p>The reviewed-comparison panel makes treatment values, outcome coding, target population and adjustment choices explicit. It supports learning and hypothesis exploration, not operational decisions.</p>
-<p class="notice"><strong>Runs locally:</strong> this page describes the reviewed-comparison panel of the aitiolin source. There is no hosted demo; start the backend and frontend from the repository instructions and open <strong>Reviewed comparison</strong>.</p>
-<section id="comparison"><h2>What exactly is being compared?</h2>
-<p>For a categorical treatment, select two actual levels, such as month-to-month versus one-year contracts. Other levels are excluded and counted. For a continuous treatment, select two fixed doses within the overall observed range. Overall range checks alone do not establish conditional overlap.</p>
-<p>Choose the event coded as 1 for a binary outcome. A risk difference of <strong>−0.05 means five percentage points lower probability</strong>, not a five-percent relative reduction. This number is an interpretation example, not a result from aitiolin.</p>
-<p><strong>ATE</strong> averages over the eligible analyzed sample; <strong>ATT</strong> targets treated observations; <strong>ATC</strong> targets controls. Continuous treatment is restricted to regression ATE between two fixed doses in this version.</p>
-<p>Nominal covariates are one-hot encoded with a reviewed reference category inside the statistical model. The graph still contains the original variables. Missing selected values stop the analysis unless complete-case exclusion was explicitly chosen. Earlier cleaning remains part of the recorded assumptions.</p></section>
-<section id="methods"><h2>Methods in the reviewed-comparison path</h2>
-<div class="table-wrap" tabindex="0" aria-label="Scrollable method support table"><table><caption>Supported estimation and uncertainty</caption><thead><tr><th scope="col">Method</th><th scope="col">What it reports</th><th scope="col">Uncertainty and limits</th></tr></thead><tbody>
-<tr><th scope="row">Linear outcome regression</th><td>Average predicted outcome difference under the two selected treatment values, with optional treatment–covariate interactions.</td><td>HC3 contrast interval with a t reference. Empirical target covariates are treated as fixed. Binary predictions may leave the 0–1 range and are flagged.</td></tr>
-<tr><th scope="row">Logistic outcome regression</th><td>Average predicted probability difference for a selected binary event. Not the raw logistic coefficient or odds ratio.</td><td>Sandwich/delta interval, empirical target covariates fixed. Separation and convergence failures stop estimation; intervals are not clipped.</td></tr>
-<tr><th scope="row">Propensity weighting</th><td>Normalized weighted group-mean difference for categorical ATE, ATT or ATC.</td><td>Full-refit independent-observation percentile bootstrap; 50–500 repetitions, up to 10,000 observations. Too many failed refits withhold the interval. No silent trimming.</td></tr>
-<tr><th scope="row">Propensity matching</th><td>Nearest logit-propensity matches with replacement for categorical ATE, ATT or ATC.</td><td>No matching-specific interval is implemented. Ordinary bootstrap is not substituted. There is no caliper; inspect match distances and residual imbalance.</td></tr>
-<tr><th scope="row">Descriptive group difference</th><td>Unadjusted mean difference, clearly separated from identified causal estimation.</td><td>Welch independent-group interval. It does not implement the graph's adjustment and is never a silent fallback.</td></tr>
-</tbody></table></div>
-<p>All inferential methods here assume independent observations. This path does not provide cluster/panel inference, IV or front-door extensions, causal forests, doubly robust estimation or automatic choice of a true graph. Existing legacy controls remain separate.</p></section>
-<section id="evidence"><h2>Read comparability before the headline number</h2>
-<div class="grid"><article class="card"><h3>Overlap</h3><p>Propensity distributions and empirical common ranges reveal whether the two groups have comparable support. Extreme scores are warnings, not an invitation to silently extrapolate.</p></article><article class="card"><h3>Balance and weights</h3><p>Standardized differences use the unadjusted pooled within-group standard deviation. After-adjustment balance and effective sample sizes are shown for matching and weighting.</p></article><article class="card"><h3>Assumptions</h3><p>The sufficient backdoor check is conditional on the saved DAG. Hidden confounders, timing errors, selection and misspecified statistical models can still invalidate an interpretation.</p></article></div>
-<p class="notice">No warning does not prove positivity. Passed diagnostics do not establish causation. Reported confidence intervals do not account for uncertainty in the graph or all data-cleaning choices.</p></section>
-<section id="reuse"><h2>Record, compare and restore</h2>
-<p>Each successful reviewed comparison has a name, specification, data hashes, encoding, result and environment record. Use the workspace exports for JSON or ZIP. Dataset rows are not attached; names, annotations and statistical results can still be sensitive.</p>
-<details><summary>Restore without overwriting an analysis</summary><p>Load matching raw data, select a bundle that contains a reviewed comparison and preview. Raw and replayed-cleaning hashes must match. Confirmation creates a new owned graph without estimating. Free-text edge evidence is not restored. Review the restored settings before running again.</p><p>ZIPs are read as bounded data, never extracted or executed. Checksums establish internal consistency, not the identity of the bundle author. Exports without a reviewed comparison cannot be restored through this route.</p></details>
-<details><summary>Compare specifications, not truth scores</summary><p>Named runs show what changed in settings and the graph. A numerical difference is withheld when the treatment, outcome, event, target, data or analyzed sample do not match. A more stable coefficient does not by itself make a graph correct.</p></details>
-<details><summary>Local processing and privacy</summary><p>The Django server processes and stores data. Processing is local only when you run that server on your own computer. This path makes no provider requests. Workspace session ownership, expiry, deletion and export limitations still apply; closing a tab alone does not delete server files.</p></details></section>
-<section id="examples"><h2>Two small teaching datasets</h2><p><strong>Synthetic campaign:</strong> the specified data-generating process has an eight-percentage-point purchase-probability effect. Sampling variation means fitted results will not be exactly eight points.</p><p><strong>Poor-overlap stress test:</strong> the generating model has a coefficient of 1.5, but treatment is completely determined by a covariate. This illustrates why a known formula and a fitted coefficient are not substitutes for observational overlap.</p><p>Both are artificial data, not recommendations about real customers. The existing Churn and World Bank walkthroughs remain educational examples with their original timing, aggregation and specification caveats.</p></section>
-<section id="references"><h2>Technical references</h2><p><a href="https://www.statsmodels.org/stable/generated/statsmodels.regression.linear_model.RegressionResults.get_robustcov_results.html">Statsmodels robust covariance documentation</a> · <a href="https://www.statsmodels.org/stable/glm.html">Statsmodels generalized linear models</a> · <a href="https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin">aitiolin source and limitations</a></p><p class="muted">The comparison engine is a dedicated implementation using NumPy, pandas, NetworkX, statsmodels, SciPy and scikit-learn. It is not an assertion that every legacy estimator uses these settings.</p></section>
-</main>
-<footer><p><strong>Private experimental prototype.</strong> Not validated for production or operational business, medical or policy recommendations.</p><nav aria-label="Footer"><a href="index.html">Home</a><a href="impressum.html">Impressum</a><a href="privacy.html">Privacy</a><a href="disclaimer.html">Disclaimer</a><a href="mailto:agrossi@gmx.de">Contact</a></nav></footer>
-</body></html>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html" aria-label="aitiolin home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>aitiolin</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks">Menu</button>
+      <nav class="nav-links" id="navLinks" aria-label="Primary navigation">
+        <ul>
+          <li><a href="index.html#prototype">Prototype</a></li>
+          <li><a href="methods.html" aria-current="page">Methods &amp; limitations</a></li>
+          <li><a href="index.html#workflow">Workflow</a></li>
+          <li><a href="index.html#use-case">Examples</a></li>
+          <li><a href="index.html#trust">Trust</a></li>
+          <li><a href="index.html#news">News</a></li>
+          <li><a href="index.html#gallery">Screenshots</a></li>
+        </ul>
+      </nav>
+      <div class="actions">
+        <a class="btn btn-secondary" href="https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="container hero-copy">
+        <span class="eyebrow">Methods &amp; limitations</span>
+        <h1 id="methods-title">Understand methods and results</h1>
+        <p class="am-muted">A short guide to interpreting causal estimates in aitiolin.</p>
+        <p>
+    aitiolin is an open-source causal inference prototype for private and educational
+    use. Its <strong>Reviewed comparison</strong> feature helps you define a causal
+    question, compare estimation methods, examine uncertainty and assess the
+    assumptions behind a result.
+        </p>
+        <p class="am-notice">
+    <strong>Important:</strong> A numerical estimate is not proof of causation.
+    The validity of an interpretation depends on the data, the proposed causal
+    graph and the assumptions used in the analysis.
+        </p>
+        <p class="am-muted">
+    These explanations apply to Reviewed comparison. The existing inference,
+    agent and robustness controls use separate settings.
+        </p>
+      </div>
+    </section>
+
+    <section class="guide-section">
+      <div class="container">
+        <div class="aitiolin-methods am-guide" id="methods-help" aria-labelledby="methods-title">
+  <details>
+    <summary><h2>1. What are you comparing?</h2></summary>
+    <div class="am-content">
+      <p>Before estimating an effect, specify:</p>
+      <ul>
+        <li><strong>Treatment and control:</strong> Which two conditions or values are being compared?</li>
+        <li><strong>Outcome:</strong> What is being measured? For a binary outcome, which event counts as 1?</li>
+        <li><strong>Target population:</strong> Are you estimating the Average Treatment Effect (ATE), the effect among treated observations (ATT), or the effect among controls (ATC)?</li>
+        <li><strong>Adjustment variables:</strong> Which potential confounders should be included, based on your causal graph?</li>
+      </ul>
+      <p>
+        aitiolin also lets you review how categorical variables and missing values
+        are handled. These choices affect the interpretation of the result.
+      </p>
+    </div>
+  </details>
+
+  <details open>
+    <summary><h2>2. How should you interpret an effect?</h2></summary>
+    <div class="am-content">
+      <p>
+        Suppose an analysis reports an estimated effect of <strong>−0.05</strong>
+        on the probability of customer churn.
+      </p>
+      <p>
+        This represents a difference of <strong>five percentage points</strong>,
+        not a relative reduction of five percent. For example, a change from
+        20% to 15% is a reduction of five percentage points.
+      </p>
+      <p>
+        However, this result does not automatically mean that changing a customer's
+        contract will reduce churn. That conclusion requires credible causal
+        assumptions, including an appropriate graph and adjustment strategy.
+      </p>
+      <p class="am-muted"><em>The numbers above are illustrative, not results from an aitiolin analysis.</em></p>
+    </div>
+  </details>
+
+  <details>
+    <summary><h2>3. Which estimation methods are available?</h2></summary>
+    <div class="am-content">
+      <p>The Reviewed comparison feature supports several approaches:</p>
+      <p class="am-muted">On smaller screens, scroll the table horizontally to view both columns.</p>
+      <div class="am-table-scroll" role="region" tabindex="0" aria-label="Scrollable methods table">
+        <table>
+          <caption>Methods in Reviewed comparison</caption>
+          <thead>
+            <tr><th scope="col">Method</th><th scope="col">What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Linear regression</th>
+              <td>Estimates an average predicted outcome difference between selected treatment conditions.</td>
+            </tr>
+            <tr>
+              <th scope="row">Logistic regression</th>
+              <td>Estimates a difference in predicted probabilities for a binary outcome.</td>
+            </tr>
+            <tr>
+              <th scope="row">Propensity-score weighting</th>
+              <td>Uses estimated treatment probabilities to construct weighted comparisons.</td>
+            </tr>
+            <tr>
+              <th scope="row">Propensity-score matching</th>
+              <td>Compares observations with similar estimated treatment probabilities.</td>
+            </tr>
+            <tr>
+              <th scope="row">Descriptive difference</th>
+              <td>Calculates an unadjusted difference between groups. This is <strong>not presented as an adjusted causal estimate</strong>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Where supported, aitiolin provides confidence intervals to describe statistical uncertainty.</p>
+      <p>
+        <strong>A confidence interval does not account for every possible source
+        of error</strong>, such as an incorrect causal graph or unmeasured
+        confounding. Matching-specific confidence intervals are not currently
+        implemented in the Reviewed comparison feature.
+      </p>
+    </div>
+  </details>
+
+  <details>
+    <summary><h2>4. What should you check before interpreting a result?</h2></summary>
+    <div class="am-content">
+      <p>A useful causal analysis goes beyond the estimated effect. Review the following evidence:</p>
+      <ul>
+        <li><strong>Causal graph:</strong> Are the proposed relationships and their timing plausible?</li>
+        <li><strong>Overlap:</strong> Are comparable treatment and control observations available?</li>
+        <li><strong>Covariate balance:</strong> Are relevant measured differences between the groups adequately addressed?</li>
+        <li><strong>Robustness and sensitivity:</strong> How dependent is the conclusion on the chosen estimator, graph and assumptions?</li>
+      </ul>
+      <p>
+        Warnings highlight potential problems. <strong>The absence of warnings
+        does not establish that the causal assumptions are correct.</strong>
+      </p>
+    </div>
+  </details>
+
+  <details>
+    <summary><h2>5. Can you reproduce the analysis?</h2></summary>
+    <div class="am-content">
+      <p>
+        aitiolin records relevant analysis information, including the graph,
+        treatment definition, configuration, cleaning history, software
+        environment and results.
+      </p>
+      <p>
+        You can export recorded analyses as JSON or ZIP bundles. These exports
+        do not include the original CSV data. Restoration requires matching
+        local data and a review of the saved assumptions.
+      </p>
+      <p>
+        Data are processed and stored by the Django server. Processing is local
+        when that server runs on your own computer. The Reviewed comparison
+        feature does not require an external AI provider.
+      </p>
+    </div>
+  </details>
+
+  <div class="am-footer">
+    <h2>Limitations and intended use</h2>
+    <p>
+      aitiolin is an experimental research and learning prototype,
+      <strong>not a production decision-support system</strong>.
+    </p>
+    <p>
+      The Reviewed comparison workflow currently assumes independent observations.
+      Advanced clustered or panel inference and several additional causal
+      estimation methods are outside its implemented scope.
+    </p>
+    <p>
+      Results should be treated as exploratory evidence, not as validated
+      recommendations for business, medical or public-policy decisions.
+    </p>
+    <p>
+      Open <strong>Reviewed comparison</strong> in your aitiolin installation,
+      or consult the
+      <a href="https://github.com/AGrosserHH/CausalitySection/tree/main/aitiolin">project repository and setup instructions</a>.
+    </p>
+  </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div class="brand" style="color:#fff;">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>aitiolin</span>
+          </div>
+          <p style="margin-top:.85rem;max-width:58ch;">Transparent causal analysis for private users who want reviewable models, intervention-focused reasoning, and clearer hypothesis documentation.</p>
+        </div>
+        <nav class="footer-links" aria-label="Footer navigation">
+          <strong>Navigation</strong>
+          <a href="index.html#prototype">Prototype</a>
+          <a href="methods.html">Methods &amp; limitations</a>
+          <a href="index.html#workflow">Workflow</a>
+          <a href="index.html#use-case">Examples</a>
+        </nav>
+        <nav class="footer-links" aria-label="Legal navigation">
+          <strong>Legal</strong>
+          <a href="impressum.html">Impressum</a>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="disclaimer.html">Disclaimer</a>
+          <a href="mailto:agrossi@gmx.de">Contact</a>
+        </nav>
+      </div>
+      <div class="footer-bottom">
+        <p>© <span id="year"></span> Andreas Grosser</p>
+        <p>aitiolin is an open-source prototype for private use only and must not be used for business decisions.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const navToggle = document.getElementById("navToggle");
+    const navLinks = document.getElementById("navLinks");
+
+    if (navToggle && navLinks) {
+      navToggle.addEventListener("click", () => {
+        const isOpen = navLinks.getAttribute("data-open") === "true";
+        navLinks.setAttribute("data-open", String(!isOpen));
+        navToggle.setAttribute("aria-expanded", String(!isOpen));
+      });
+
+      navLinks.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          navLinks.setAttribute("data-open", "false");
+          navToggle.setAttribute("aria-expanded", "false");
+        });
+      });
+    }
+
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
